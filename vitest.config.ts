@@ -3,6 +3,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['src/**/*.spec.ts', 'src/**/*.spec.tsx', 'tests/**/*.spec.ts'],
+    // The Playwright + Electron e2e specs (tests/e2e/*.spec.ts) run via
+    // `pnpm test:e2e` (playwright.config.ts), never under vitest — its runner
+    // can't launch Electron. Exclude them and the example workspace so
+    // `vitest run` only collects the SDK's unit/integration specs.
+    exclude: ['node_modules/**', 'dist/**', 'tests/e2e/**', 'example/**'],
     // Node by default (fast; main/preload tests). React renderer tests opt into
     // jsdom per-file via a `@vitest-environment jsdom` docblock.
     environment: 'node',

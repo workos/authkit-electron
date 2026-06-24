@@ -3,3 +3,14 @@ dist/
 coverage/
 *.log
 .DS_Store
+
+# Example app build output (electron-vite + electron-builder)
+example/out/
+example/dist/
+example/release/
+
+# Playwright e2e artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/

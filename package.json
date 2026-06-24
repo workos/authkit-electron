@@ -35,13 +35,18 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "test:coverage": "vitest --run --coverage",
-    "test:watch": "vitest --watch"
+    "test:watch": "vitest --watch",
+    "test:e2e": "playwright test",
+    "publint": "publint",
+    "attw": "attw"
   },
   "dependencies": {
     "@workos/authkit-session": "^0.6.0",
     "electron-store": "^11.0.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@playwright/test": "^1.49.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20.17.0",
@@ -53,6 +58,7 @@
     "jsdom": "^29.1.1",
     "oxfmt": "^0.42.0",
     "oxlint": "^1.57.0",
+    "publint": "^0.3.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17"
   },
@@ -72,5 +78,11 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
   }
 }

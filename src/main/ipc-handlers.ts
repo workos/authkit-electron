@@ -80,7 +80,8 @@ export function registerIpcHandlers(
   opts: RegisterIpcHandlersOptions = {},
 ): () => void {
   const ipc: IpcMainLike = opts.ipcMain ?? (ipcMain as unknown as IpcMainLike);
-  const broadcast = opts.broadcast ?? ((payload: RendererAuthPayload) => broadcastAuthChange(payload));
+  const broadcast =
+    opts.broadcast ?? ((payload: RendererAuthPayload) => broadcastAuthChange(payload));
 
   // ipcMain.handle passes (event, ...args); the renderer's first invoke arg is
   // therefore args[1]. We read it positionally so the handler is agnostic to
@@ -153,7 +154,8 @@ export function broadcastAuthChange(
   payload: RendererAuthPayload,
   opts: BroadcastOptions = {},
 ): void {
-  const bw: BrowserWindowsLike = opts.browserWindow ?? (BrowserWindow as unknown as BrowserWindowsLike);
+  const bw: BrowserWindowsLike =
+    opts.browserWindow ?? (BrowserWindow as unknown as BrowserWindowsLike);
   for (const win of bw.getAllWindows()) {
     const wc = win.webContents;
     if (!wc.isDestroyed()) {

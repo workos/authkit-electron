@@ -20,7 +20,7 @@ import type { KeyValueStoreLike, SafeStorageLike } from '../storage.js';
  * exercise it with HIGH fidelity: a REAL public WorkOS client (its `pkce` +
  * `getAuthorizationUrl` are local — no network), a REAL `AuthKitCore` /
  * `AuthOperations` so `createAuthorization` and `verifyCallbackState` run the
- * actual iron-webcrypto seal/unseal, and only `authenticateWithCode` mocked.
+ * actual authkit-session seal/unseal, and only `authenticateWithCode` mocked.
  * This catches state-mismatch and missing-state regressions for real, not
  * against a stubbed verifier.
  */

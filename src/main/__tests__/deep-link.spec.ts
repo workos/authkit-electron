@@ -55,9 +55,10 @@ describe('parseCallback — URL matrix', () => {
   });
 
   it('ignores extra params and keeps the relevant ones', () => {
-    expect(
-      parseCallback('workos-auth://callback?code=c&state=s&foo=bar&baz=1'),
-    ).toEqual({ code: 'c', state: 's' });
+    expect(parseCallback('workos-auth://callback?code=c&state=s&foo=bar&baz=1')).toEqual({
+      code: 'c',
+      state: 's',
+    });
   });
 
   it('returns an empty object for a malformed URL rather than throwing', () => {

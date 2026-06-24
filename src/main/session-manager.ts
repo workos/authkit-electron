@@ -174,10 +174,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     await ceremony.open(url);
   }
 
-  async function completeCallback(
-    code: string,
-    state: string | undefined,
-  ): Promise<AuthResult> {
+  async function completeCallback(code: string, state: string | undefined): Promise<AuthResult> {
     // Single-use take: pull (and remove) the sealed state we persisted at
     // sign-in. A missing/replayed state yields null, and `verifyCallbackState`
     // then rejects with OAuthStateMismatchError / PKCECookieMissingError.

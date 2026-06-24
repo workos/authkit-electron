@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'main'
+  pull_request: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: Lint, typecheck, test & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Format
+        run: pnpm run format:check
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test (coverage-gated)
+        run: pnpm run test:coverage
+
+      # Security gate: all crypto / PKCE / JWT / refresh logic must be delegated
+      # to @workos/authkit-session, never re-implemented locally. The only hits
+      # allowed are import/re-export lines from that package. A new local
+      # implementation makes this grep match and fails the build (criterion 3).
+      - name: Crypto-delegation guard
+        run: |
+          set -euo pipefail
+          MATCHES=$(grep -rnE 'jose|iron-webcrypto|jwtVerify|createRemoteJWKSet|generateCodeChallenge' src/ || true)
+          # Drop lines that merely import/re-export from authkit-session.
+          OFFENDERS=$(echo "$MATCHES" | grep -vE "@workos/authkit-session" || true)
+          if [ -n "$OFFENDERS" ]; then
+            echo "::error::Crypto/PKCE/JWT logic must be delegated to @workos/authkit-session, not re-implemented:"
+            echo "$OFFENDERS"
+            exit 1
+          fi
+          echo "OK: no locally re-implemented crypto/PKCE/JWT/refresh logic."
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Package lint (publint)
+        run: pnpm run publint
+
+      - name: Types (Are The Types Wrong?)
+        run: pnpm run attw -- --pack --profile esm-only
+
+      # The example resolves @workos/authkit-electron from the BUILT dist
+      # (workspace:*), so a broken public type fails this build (criterion 8).
+      - name: Example build (typechecks against built SDK)
+        run: pnpm --filter ./example build
+
+  e2e:
+    name: E2E (Playwright + Electron)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build SDK
+        run: pnpm run build
+
+      - name: Build example
+        run: pnpm --filter ./example build
+
+      # Real-instance e2e. The suite SKIPS with a clear message when these
+      # secrets are absent (e.g. on forks) rather than failing the bootstrap; a
+      # genuine sign-in failure once they are present is a hard gate failure.
+      #
+      # Required repository secrets:
+      #   E2E_WORKOS_CLIENT_ID  - a WorkOS test-instance Client ID (public client)
+      #   E2E_TEST_EMAIL        - a seeded test user's email
+      #   E2E_TEST_PASSWORD     - that test user's password
+      - name: E2E sign-in (both ceremony modes)
+        run: xvfb-run --auto-servernum pnpm run test:e2e
+        env:
+          E2E_WORKOS_CLIENT_ID: ${{ secrets.E2E_WORKOS_CLIENT_ID }}
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}

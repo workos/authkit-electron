@@ -1,0 +1,50 @@
+appId: com.electron.app
+productName: electron-authkit-example
+# Register the custom URL scheme so the OS routes `workos-auth://callback` deep
+# links to the packaged app. Matches the `redirectUri` passed to createAuthKit()
+# and what the SDK registers at runtime via setAsDefaultProtocolClient.
+protocols:
+  - name: WorkOS AuthKit Callback
+    schemes:
+      - workos-auth
+directories:
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+  - node_modules/**/*
+  - '!node_modules/*/{test,tests,__tests__,docs,example,examples}/**'
+  - '!node_modules/*/*.md'
+  - '!node_modules/*/tsconfig.json'
+  - '!**/*.{ts,map}'
+asarUnpack:
+  - resources/**
+win:
+  executableName: electron-authkit-example
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}.${ext}
+linux:
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: electronjs.org
+  category: Utility
+appImage:
+  artifactName: ${name}-${version}.${ext}
+npmRebuild: false
+publish:
+  provider: generic
+  url: https://example.com/auto-updates
