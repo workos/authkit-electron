@@ -15,8 +15,9 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "lib": ["es2022", "dom"],
+    "jsx": "react-jsx",
     "types": ["node", "vitest/globals"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

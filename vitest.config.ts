@@ -2,7 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['src/**/*.spec.ts', 'tests/**/*.spec.ts'],
+    include: ['src/**/*.spec.ts', 'src/**/*.spec.tsx', 'tests/**/*.spec.ts'],
+    // Node by default (fast; main/preload tests). React renderer tests opt into
+    // jsdom per-file via a `@vitest-environment jsdom` docblock.
     environment: 'node',
     globals: true,
     coverage: {
@@ -13,10 +15,12 @@ export default defineConfig({
         'dist/',
         'coverage/',
         '**/*.spec.ts',
+        '**/*.spec.tsx',
         '**/*.test.ts',
+        '**/*.test.tsx',
         'vitest.config.ts',
       ],
-      include: ['src/**/*.ts'],
+      include: ['src/**/*.ts', 'src/**/*.tsx'],
       thresholds: {
         global: {
           branches: 80,
