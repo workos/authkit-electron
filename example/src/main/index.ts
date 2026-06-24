@@ -30,15 +30,23 @@ if (!gotLock) {
 const clientId =
   process.env.MAIN_VITE_WORKOS_CLIENT_ID ?? import.meta.env.MAIN_VITE_WORKOS_CLIENT_ID;
 
+// Resolve the sign-in ceremony. Like the Client ID above, support BOTH channels:
+// a runtime shell env var (`AUTHKIT_CEREMONY=window pnpm dev`) and a build-time
+// `.env` value. Vite only exposes `.env` vars through `import.meta.env` when they
+// carry the `MAIN_VITE_` prefix — it does NOT copy `.env` into `process.env` — so
+// in `example/.env` the var must be `MAIN_VITE_AUTHKIT_CEREMONY=window`.
+const ceremonyMode = process.env.AUTHKIT_CEREMONY ?? import.meta.env.MAIN_VITE_AUTHKIT_CEREMONY;
+const mode = ceremonyMode === 'window' ? 'window' : 'system-browser';
+console.log(
+  `[example] sign-in ceremony: ${mode === 'window' ? 'window (in-app BrowserWindow)' : 'system-browser (OS browser)'}`,
+);
+
 // Construct the AuthKit runtime. No API key — this is a public OAuth client;
 // only the WorkOS Client ID is needed and no secret ships in the binary.
 const authkit = createAuthKit({
   clientId,
   redirectUri: 'workos-auth://callback',
-  // Toggle the sign-in ceremony at launch: AUTHKIT_CEREMONY=window opens an
-  // in-app BrowserWindow; the default (unset / 'system-browser') opens the OS
-  // browser and returns via the custom-protocol deep link.
-  ceremony: { mode: process.env.AUTHKIT_CEREMONY === 'window' ? 'window' : 'system-browser' },
+  ceremony: { mode },
 });
 
 function createWindow(): BrowserWindow {

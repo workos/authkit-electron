@@ -49,12 +49,25 @@ pnpm --filter ./example dev
 
 ### Switching ceremony mode
 
-The app reads the sign-in ceremony from an env var so you can try both:
+The default is `system-browser` (opens your OS browser, returns via the
+custom-protocol deep link). To use the in-app `BrowserWindow` instead, set the
+mode through **either** channel.
+
+Runtime shell env var (inherited by the spawned Electron main process):
 
 ```bash
-AUTHKIT_CEREMONY=system-browser pnpm --filter ./example dev   # default: OS browser + deep link
-AUTHKIT_CEREMONY=window         pnpm --filter ./example dev   # in-app BrowserWindow
+AUTHKIT_CEREMONY=window pnpm --filter ./example dev
 ```
+
+Or in `example/.env` — but Vite only exposes `.env` vars to the main process
+through the `MAIN_VITE_` prefix (it does **not** copy `.env` into `process.env`),
+so use the prefixed name there:
+
+```bash
+MAIN_VITE_AUTHKIT_CEREMONY=window
+```
+
+On launch the terminal logs the resolved mode: `[example] sign-in ceremony: ...`.
 
 ## Key files
 
