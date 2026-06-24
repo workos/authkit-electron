@@ -45,21 +45,11 @@ export function createPublicWorkOS(clientId: string): WorkOS {
 }
 
 /**
- * Build the internal `AuthKitConfig` from public config + a resolved cookie
- * password.
+ * Assert a cookie password meets the core's minimum length.
  *
- * `apiKey` is intentionally set to the empty string. It is NEVER read, because
- * we inject our own client (see {@link createPublicWorkOS}) rather than letting
- * authkit-session construct one from config. (Upstream improvement: make
- * `AuthKitConfig.apiKey` optional.)
- *
- * @throws {Error} if `cookiePassword` is shorter than
- *   {@link MIN_COOKIE_PASSWORD_LENGTH}.
+ * @throws {Error} if shorter than {@link MIN_COOKIE_PASSWORD_LENGTH}.
  */
-export function toAuthKitConfig(
-  config: AuthKitElectronConfig,
-  cookiePassword: string,
-): AuthKitConfig {
+function assertValidCookiePassword(cookiePassword: string): void {
   if (cookiePassword.length < MIN_COOKIE_PASSWORD_LENGTH) {
     throw new Error(
       `cookiePassword must be at least ${MIN_COOKIE_PASSWORD_LENGTH} characters ` +
@@ -67,15 +57,59 @@ export function toAuthKitConfig(
         `seal the in-flight PKCE state.`,
     );
   }
+}
 
-  return {
+/**
+ * Build the internal `AuthKitConfig` from public config + a cookie password.
+ *
+ * The password may be a string (validated immediately) or a resolver thunk
+ * (called lazily on first `cookiePassword` access, then validated and memoized).
+ * The lazy form lets {@link createAuthKit} defer an OS-keychain read until the
+ * core first seals/unseals PKCE state at sign-in — which is always after
+ * `app.whenReady()`, when Electron's `safeStorage` is available. Both
+ * `AuthKitCore` and `AuthOperations` store the config and only dereference
+ * `cookiePassword` at seal/unseal time (never at construction), so a getter
+ * suffices.
+ *
+ * `apiKey` is intentionally set to the empty string. It is NEVER read, because
+ * we inject our own client (see {@link createPublicWorkOS}) rather than letting
+ * authkit-session construct one from config. (Upstream improvement: make
+ * `AuthKitConfig.apiKey` optional.)
+ *
+ * @throws {Error} if a string password is shorter than
+ *   {@link MIN_COOKIE_PASSWORD_LENGTH} (a resolver throws on first read instead).
+ */
+export function toAuthKitConfig(
+  config: AuthKitElectronConfig,
+  cookiePassword: string | (() => string),
+): AuthKitConfig {
+  const base = {
     clientId: config.clientId,
     redirectUri: config.redirectUri,
-    cookiePassword,
     // Intentionally empty — never read because we inject our own client.
     apiKey: '',
     apiHttps: true,
     cookieMaxAge: DEFAULT_COOKIE_MAX_AGE,
     cookieName: DEFAULT_COOKIE_NAME,
+  };
+
+  if (typeof cookiePassword === 'string') {
+    assertValidCookiePassword(cookiePassword);
+    return { ...base, cookiePassword };
+  }
+
+  // Lazy resolver: defer the read (e.g. a safeStorage keychain hit) until the
+  // core first dereferences cookiePassword. Validate + memoize on first access.
+  let cached: string | undefined;
+  return {
+    ...base,
+    get cookiePassword(): string {
+      if (cached === undefined) {
+        const resolved = cookiePassword();
+        assertValidCookiePassword(resolved);
+        cached = resolved;
+      }
+      return cached;
+    },
   };
 }

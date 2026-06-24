@@ -81,10 +81,16 @@ export function createAuthKit(
 ): CreateAuthKitResult {
   const storage: TokenStorage = opts.storage ?? config.storage ?? createDefaultStorage();
 
-  // Resolve the sealing secret: explicit override, else per-install keychain
-  // value. `toAuthKitConfig` enforces the >= 32 char minimum.
-  const cookiePassword = config.cookiePassword ?? storage.getOrCreateCookiePassword();
-  const authKitConfig = toAuthKitConfig(config, cookiePassword);
+  // Resolve the sealing secret lazily so createAuthKit() can be called before
+  // app.whenReady(): an explicit cookiePassword is validated up front, otherwise
+  // we defer storage.getOrCreateCookiePassword() (an OS-keychain read via
+  // safeStorage, unavailable until `ready` on macOS) until the core first
+  // dereferences it at sign-in seal time. `toAuthKitConfig` enforces the >= 32
+  // char minimum either way.
+  const authKitConfig = toAuthKitConfig(
+    config,
+    config.cookiePassword ?? (() => storage.getOrCreateCookiePassword()),
+  );
 
   const client: WorkOS = opts.client ?? createPublicWorkOS(config.clientId);
   const core = new AuthKitCore(authKitConfig, client, sessionEncryption);

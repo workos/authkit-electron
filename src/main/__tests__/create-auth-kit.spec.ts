@@ -123,6 +123,27 @@ describe('createAuthKit — wiring', () => {
     expect(typeof kit.cleanup).toBe('function');
   });
 
+  it('does not read cookiePassword at construction (deferred for before-whenReady use)', () => {
+    // Regression: before app.whenReady() on macOS, safeStorage is unavailable and
+    // storage.getOrCreateCookiePassword() throws. createAuthKit() must NOT call it
+    // at construction — the core dereferences cookiePassword lazily, only at
+    // sign-in seal time (always after `ready`). This reproduces the
+    // EncryptionUnavailableError the example hit constructing the kit at module
+    // top level.
+    const storage = makeStorage();
+    storage.getOrCreateCookiePassword = () => {
+      throw new Error('safeStorage unavailable (called before app ready)');
+    };
+
+    expect(() =>
+      createAuthKit(config, {
+        storage,
+        client: { userManagement: {} } as unknown as WorkOS,
+        ipcMain: makeIpcMain(),
+      }),
+    ).not.toThrow();
+  });
+
   it('registerProtocol calls setAsDefaultProtocolClient and wires listeners', () => {
     const app = makeApp();
     const kit = createAuthKit(config, {

@@ -47,6 +47,25 @@ describe('toAuthKitConfig', () => {
     expect(() => toAuthKitConfig(base, short)).toThrowError(/at least 32 characters/);
   });
 
+  it('accepts a lazy resolver and defers calling it until cookiePassword is read', () => {
+    // Lets createAuthKit() defer the OS-keychain read (safeStorage) until the core
+    // first dereferences cookiePassword at sign-in seal time — i.e. after app ready.
+    let calls = 0;
+    const config = toAuthKitConfig(base, () => {
+      calls += 1;
+      return validPassword;
+    });
+    expect(calls).toBe(0); // not resolved at build time
+    expect(config.cookiePassword).toBe(validPassword); // resolved on first read
+    expect(config.cookiePassword).toBe(validPassword); // memoized
+    expect(calls).toBe(1);
+  });
+
+  it('validates a lazily resolved password on first read', () => {
+    const config = toAuthKitConfig(base, () => 'a'.repeat(10));
+    expect(() => config.cookiePassword).toThrowError(/at least 32 characters/);
+  });
+
   it('throws at exactly one char below the minimum', () => {
     const justUnder = 'a'.repeat(MIN_COOKIE_PASSWORD_LENGTH - 1);
     expect(() => toAuthKitConfig(base, justUnder)).toThrow();
