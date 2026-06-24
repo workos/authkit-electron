@@ -1,0 +1,71 @@
+{
+  "name": "@workos/authkit-electron",
+  "version": "0.0.0",
+  "description": "WorkOS AuthKit for Electron — main, preload, and React renderer bindings built on @workos/authkit-session.",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./preload": {
+      "types": "./dist/preload/index.d.ts",
+      "default": "./dist/preload/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.build.json",
+    "rebuild": "pnpm run clean && pnpm run build",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "prepack": "npm run rebuild",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:coverage": "vitest --run --coverage",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@workos/authkit-session": "^0.6.0",
+    "electron-store": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@vitest/coverage-v8": "^4.0.17",
+    "@workos-inc/node": "^10.4.0",
+    "electron": "^42.0.0",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
+  },
+  "peerDependencies": {
+    "@workos-inc/node": "^10.4.0",
+    "electron": ">=30",
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

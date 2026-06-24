@@ -1,0 +1,229 @@
+{
+  "projectName": "@workos/authkit-electron",
+  "slug": "authkit-electron",
+  "date": "2026-06-24",
+  "status": "Approved",
+  "supersedes": null,
+  "gates": {
+    "dimensions": [
+      {
+        "key": "problem",
+        "label": "Problem Clarity",
+        "status": "ready",
+        "evidence": "The electron-authkit-example repo hand-wires the full AuthKit OAuth/session lifecycle across src/main/auth, src/preload, and src/renderer, demonstrating the boilerplate and latent bugs every integrator currently re-derives."
+      },
+      {
+        "key": "goals",
+        "label": "Goal Definition",
+        "status": "ready",
+        "evidence": "Goals are observable outcomes: one call per Electron context, zero re-implemented crypto via the core, public-client (no API key), refresh-token confinement, secure at-rest persistence, and lockstep-versioned ESM subpath exports."
+      },
+      {
+        "key": "criteria",
+        "label": "Success Criteria",
+        "status": "ready",
+        "evidence": "Each goal maps to a runnable check — coverage-gated vitest, a crypto-delegation grep guard, per-ceremony-mode Playwright e2e, ESM export resolution, build/typecheck, and lint — all exit-0 gated."
+      },
+      {
+        "key": "scope",
+        "label": "Scope Boundaries",
+        "status": "ready",
+        "evidence": "Explicit in/out/future lists: native passkeys and non-React bindings are out with rationale; public-client config, both ceremony modes, and the example app are in."
+      },
+      {
+        "key": "consistency",
+        "label": "Consistency",
+        "status": "ready",
+        "evidence": "No contradictions remain; storage-seam divergence, session-via-safeStorage, public-client (no API key, bypassing getWorkOS), and ESM-only output all carry stated rationale."
+      }
+    ]
+  },
+  "problem": [
+    "WorkOS AuthKit has no Electron SDK. Integrating it today means hand-wiring the full OAuth and session lifecycle across Electron's three isolated process contexts — main, preload, and renderer — as the electron-authkit-example repo does across src/main/auth/ (auth.ts, deep-link-handler.ts, ipc-handlers.ts), src/preload/index.ts, and the renderer's src/renderer/src/hooks/useAuth.ts.",
+    "That hand-wiring concentrates several error-prone, security-sensitive concerns in application code: PKCE generation and expiry, authorization-code exchange, JWT-exp parsing and token refresh, the cross-platform custom-protocol deep-link capture matrix (open-url on macOS, second-instance on Windows/Linux, the dev-mode argv branch), safeStorage-backed persistence behind a hardcoded key, and a private IPC contract whose channel names are duplicated between preload and main behind a fragile 'must match' comment. The renderer additionally redefines its own User type (useAuth.ts), which drifts from @workos-inc/node's.",
+    "Every team adopting AuthKit on Electron re-derives this same boilerplate and inherits the same latent bugs. WorkOS already ships @workos/authkit-session — the framework-agnostic core powering @workos/authkit-tanstack-react-start — whose AuthKitCore and AuthOperations are cookie-free and accept an injected WorkOS client, so the building blocks exist; there is simply no packaging of them for Electron's runtime model."
+  ],
+  "goals": [
+    "Collapse the three-context integration to one call per context — createAuthKit() in main, exposeAuthKit() in preload, <AuthKitProvider> in the renderer — replacing the roughly five hand-wired files in electron-authkit-example.",
+    "Reuse @workos/authkit-session's core (AuthKitCore, AuthOperations, sessionEncryption) for all security-sensitive logic — zero re-implemented crypto, PKCE, JWT verification, or token-refresh code — operating as a PUBLIC OAuth client: construct the WorkOS client with clientId only (no API key shipped) and inject it into the core, bypassing the API-key-requiring getWorkOS() factory and the global ConfigurationProvider.",
+    "Confine the refresh token to the main process so it appears in no renderer-facing IPC payload, while exposing the short-lived access token through getAccessToken().",
+    "Persist the session at rest via safeStorage (OS keychain), and seal the in-flight PKCE verifier with a per-install, >=32-char cookiePassword generated on first run and stored in the keychain — no static secret ships in the binary (an upgrade over the example's hardcoded key).",
+    "Own the IPC contract inside the package so consumers never redeclare channel names, and surface @workos-inc/node's User and claims types directly to eliminate type drift.",
+    "Support both sign-in ceremonies — system-browser (default) and in-app window — and the full cross-platform deep-link capture matrix out of the box.",
+    "Ship as a single ESM package with subpath exports (root for main, /preload, /react) that version in lockstep, plus an in-repo example app that consumes it."
+  ],
+  "successCriteria": [
+    {
+      "criterion": "Coverage-gated unit/integration suite covers token refresh on expiry, callback code-exchange with PKCE state verification, the deep-link parse matrix, IPC payload shape, and the safeStorage-unavailable refusal path",
+      "check": "pnpm vitest run --coverage — exits 0 against a configured threshold (authkit-session precedent: 80%), so a never-written scenario fails the gate"
+    },
+    {
+      "criterion": "The refresh token never appears in any renderer-facing IPC payload",
+      "check": "pnpm vitest run (IPC payload-shape tests assert refreshToken is absent) — exits 0"
+    },
+    {
+      "criterion": "Security-sensitive crypto/PKCE/JWT/refresh logic is delegated to @workos/authkit-session, not re-implemented locally",
+      "check": "CI grep guard: `grep -rnE 'jose|iron-webcrypto|jwtVerify|createRemoteJWKSet|generateCodeChallenge' src/` yields only import/re-export lines from @workos/authkit-session — exits 0"
+    },
+    {
+      "criterion": "Package exports resolve for main, /preload, and /react as ESM with correct type definitions (ESM-only, matching authkit-session's lineage)",
+      "check": "pnpm publint && pnpm attw --pack --profile esm-only — exits 0"
+    },
+    {
+      "criterion": "The library builds and typechecks cleanly",
+      "check": "pnpm build && pnpm tsc --noEmit — exits 0"
+    },
+    {
+      "criterion": "Lint and format pass, matching the authkit-session toolchain (oxlint/oxfmt)",
+      "check": "pnpm lint && pnpm format:check — exits 0"
+    },
+    {
+      "criterion": "Automated end-to-end sign-in completes in BOTH ceremony modes against a real WorkOS test instance, each as its own passing test so dropping a mode fails the gate",
+      "check": "pnpm test:e2e (Playwright + Electron; the suite contains a passing test for system-browser AND for window mode) — exits 0; test backend migrates to @workos/emulate later"
+    },
+    {
+      "criterion": "The in-repo example app typechecks against the SDK's BUILT public API so a broken public type fails",
+      "check": "pnpm --filter ./example build — exits 0, with the example resolving @workos/authkit-electron from its built dist (not a src path alias), after the SDK is built first"
+    }
+  ],
+  "scope": {
+    "mvp": [
+      {
+        "item": "Public-client config: createAuthKit({ clientId, redirectUri, cookiePassword }) constructs createWorkOS({ clientId }) (no API key) and injects it into authkit-session's AuthKitCore/AuthOperations",
+        "reason": "Desktop apps are public OAuth clients; shipping a WorkOS API key in a distributed binary would leak a confidential server credential. Bypasses the core's API-key-requiring getWorkOS() factory."
+      },
+      {
+        "item": "Main-process session manager on the injected core: getUser/getAccessToken/refresh (validateAndRefresh) + cleanup(), with multi-window broadcast of auth changes",
+        "reason": "The core 'server' half — nothing works without it; reuses the core's refresh dedup + rate-limit retry"
+      },
+      {
+        "item": "Cross-platform deep-link capture: registerProtocol() + the open-url / second-instance / dev-argv matrix",
+        "reason": "The most error-prone hand-wired piece and the backbone of callback capture"
+      },
+      {
+        "item": "system-browser ceremony mode (default): createAuthorization -> persist sealedState main-side -> shell.openExternal; callback re-orchestrated outside AuthService (verifyCallbackState -> authenticateWithCode)",
+        "reason": "Most secure, the recommended default; required for a usable MVP. AuthService.handleCallback is cookie-bound and cannot be reused."
+      },
+      {
+        "item": "preload exposeAuthKit() bridge with SDK-owned channel names",
+        "reason": "Removes the channel-duplication footgun between preload and main"
+      },
+      {
+        "item": "/react: AuthKitProvider + useAuth() + useAccessToken()",
+        "reason": "The renderer surface applications consume"
+      },
+      {
+        "item": "safeStorage-backed session persistence (refresh token confined to main) + per-install >=32-char cookiePassword in the keychain for sealing the in-flight PKCE verifier",
+        "reason": "Secure-by-default at-rest storage with no static secret shipped in the binary"
+      },
+      {
+        "item": "User/claims types surfaced from @workos-inc/node",
+        "reason": "Eliminates renderer User-type drift"
+      }
+    ],
+    "full": [
+      {
+        "item": "window ceremony mode (in-app BrowserWindow) with navigation-intercept callback capture",
+        "reason": "Second sign-in mode for apps that prefer staying in-app"
+      },
+      {
+        "item": "Guard components <SignedIn> / <SignedOut>",
+        "reason": "Convenience matching @clerk/clerk-react's declarative guards. (The AuthKit family ships an ensureSignedIn route-guard instead, which doesn't map to a router-less Electron renderer.) Explicitly requested."
+      },
+      {
+        "item": "switchToOrganization() via AuthOperations",
+        "reason": "Common multi-tenant requirement"
+      },
+      {
+        "item": "In-repo example/ app evolved from electron-authkit-example",
+        "reason": "Living reference and the e2e target"
+      },
+      {
+        "item": "Automated Playwright + Electron e2e covering both ceremony modes",
+        "reason": "Real-sign-in fidelity per the chosen test strategy"
+      }
+    ],
+    "stretch": [
+      {
+        "item": "Pluggable Electron storage adapter interface (swap electron-store for keytar or a custom backend)",
+        "reason": "Distinct from authkit-session's SessionStorage seam, which is cookie/HTTP-shaped and deliberately not used here — this is an Electron-native key-value seam"
+      },
+      {
+        "item": "@workos/emulate as the deterministic e2e backend"
+      }
+    ],
+    "outOfScope": [
+      {
+        "item": "Native passkeys / WebAuthn module",
+        "reason": "AuthKit handles passkeys on its hosted page at a real https origin in both ceremony modes; no native module is needed (verified against WorkOS docs)"
+      },
+      {
+        "item": "Non-React renderer bindings (vanilla, Vue, Svelte)",
+        "reason": "main and preload are framework-agnostic, so bindings can follow later with no rework"
+      },
+      {
+        "item": "CJS output (dual ESM+CJS build)",
+        "reason": "authkit-session and the sibling SDKs are ESM-only; modern Electron supports ESM and the example bundles via electron-vite. CJS would require bundling an ESM-only dependency. Revisit only if a consumer needs a CJS main with no bundler."
+      },
+      {
+        "item": "Admin Portal, Directory Sync, and org-management UI",
+        "reason": "Not session/authentication concerns"
+      },
+      {
+        "item": "Auto-update, packaging, and code-signing helpers",
+        "reason": "General Electron concerns outside authentication"
+      }
+    ],
+    "future": [
+      "Vanilla and Vue/Svelte renderer bindings",
+      "@workos/emulate-backed deterministic e2e",
+      "Dual ESM+CJS output if a consumer needs it",
+      "Documented window-mode Touch ID setup (Electron >= 42 + app.configureWebAuthn)"
+    ]
+  },
+  "execution": {
+    "strategy": "Hybrid",
+    "phases": [
+      {
+        "title": "Core session engine",
+        "risk": "medium",
+        "blocking": true,
+        "specPath": "docs/ideation/authkit-electron/spec-phase-1.md",
+        "notes": "Public-client setup: construct the WorkOS client via createWorkOS({ clientId }) (no API key) and build an AuthKitConfig object directly (clientId, redirectUri, cookiePassword; apiKey set to '' since the injected client is what is used), bypassing authkit-session's getWorkOS() and ConfigurationProvider. Integrate AuthKitCore + AuthOperations + sessionEncryption; session manager (getUser/getAccessToken/refresh/signOut/switchToOrganization); safeStorage persistence; per-install keychain cookiePassword. Pin @workos-inc/node peer to a range matching authkit-session (^10.x, aligned with the newest sibling tanstack-start; the example must bump off 8.0.0-rc.10). Unit-tested against a mocked WorkOS client; no Electron windows yet."
+      },
+      {
+        "title": "Ceremony, deep-link & IPC",
+        "risk": "high",
+        "blocking": true,
+        "specPath": "docs/ideation/authkit-electron/spec-phase-2.md",
+        "notes": "system-browser sign-in via AuthOperations.createAuthorization (returns { url, sealedState }; the auth URL carries state=sealedState). RE-ORCHESTRATE the callback outside AuthService (AuthService.handleCallback is cookie/SessionStorage-bound and unusable): persist the sealedState verifier main-side in electron-store (not a cookie), then at callback feed the deep-link state param to AuthKitCore.verifyCallbackState as cookieValue, unseal, call client.userManagement.authenticateWithCode({ code, clientId, codeVerifier }), build the Session, persist via safeStorage, and single-use-delete the verifier. Cross-platform deep-link capture (registerProtocol + open-url/second-instance/argv). IPC handlers with discriminated-union results + multi-window broadcast; preload exposeAuthKit bridge.",
+        "prereqs": ["Core session engine"]
+      },
+      {
+        "title": "React bindings",
+        "risk": "low",
+        "blocking": true,
+        "specPath": "docs/ideation/authkit-electron/spec-phase-3.md",
+        "notes": "@workos/authkit-electron/react: AuthKitProvider, useAuth, useAccessToken, <SignedIn>/<SignedOut>. Consumes the SDK-owned IPC bridge; the renderer never sees the refresh token. Surfaces @workos-inc/node User/claims types.",
+        "prereqs": ["Ceremony, deep-link & IPC"]
+      },
+      {
+        "title": "In-app window ceremony mode",
+        "risk": "medium",
+        "blocking": true,
+        "specPath": "docs/ideation/authkit-electron/spec-phase-4.md",
+        "notes": "ceremony.mode 'window': child BrowserWindow to the hosted AuthKit page, navigation-intercept callback capture, preventDefault before the protocol handler fires to avoid a double-handle. Reuses the Phase 2 callback re-orchestration.",
+        "prereqs": ["Ceremony, deep-link & IPC"]
+      },
+      {
+        "title": "Example app + automated e2e",
+        "risk": "medium",
+        "blocking": false,
+        "specPath": "docs/ideation/authkit-electron/spec-phase-5.md",
+        "notes": "Seed example/ from electron-authkit-example consuming the published SDK API (resolving the package from built dist); Playwright + Electron e2e with a passing sign-in test for EACH ceremony mode; wire lint/format/export-resolution into CI.",
+        "prereqs": ["React bindings", "In-app window ceremony mode"]
+      }
+    ],
+    "agentTeamPrompt": "Phase 3 (React bindings) and Phase 4 (In-app window ceremony mode) are independent and can run in parallel once Phase 2 (Ceremony, deep-link & IPC) is complete - both depend only on Phase 2. Spawn one teammate per phase: teammate A runs docs/ideation/authkit-electron/spec-phase-3.md (touches src/react/* and src/shared), teammate B runs docs/ideation/authkit-electron/spec-phase-4.md (touches src/main/ceremony/* and src/main/deep-link.ts). Coordinate on shared files (package.json) - only one teammate edits it at a time. Each must pass `pnpm vitest run --coverage` before converging on Phase 5 (Example app + automated e2e)."
+  }
+}
