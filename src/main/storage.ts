@@ -21,6 +21,31 @@ const COOKIE_PASSWORD_BYTES = 32;
 /** electron-store keys. Values are safeStorage-encrypted base64 strings. */
 const SESSION_KEY = 'session';
 const COOKIE_PASSWORD_KEY = 'cookiePassword';
+/** Namespace under which pending PKCE verifiers are stored (keyed by state). */
+const PENDING_VERIFIER_KEY = 'pendingVerifiers';
+
+/**
+ * TTL for an in-flight PKCE verifier, in milliseconds. Matches the 600s the
+ * core embeds in the sealed state — once the seal expires, `verifyCallbackState`
+ * would reject it anyway, so we drop ours on the same clock.
+ */
+const PENDING_VERIFIER_TTL_MS = 10 * 60 * 1000;
+
+/** Stored shape of a single pending verifier: the value plus its expiry. */
+interface PendingVerifierEntry {
+  value: string;
+  expiresAt: number;
+}
+
+/** Drop entries whose TTL has elapsed; mutates the map in place. */
+function pruneExpiredVerifiers(map: Record<string, PendingVerifierEntry>): void {
+  const now = Date.now();
+  for (const [k, entry] of Object.entries(map)) {
+    if (!entry || entry.expiresAt <= now) {
+      delete map[k];
+    }
+  }
+}
 
 /**
  * Thrown when `safeStorage` cannot encrypt (e.g. Linux without a keyring, or a
@@ -150,5 +175,54 @@ export function createDefaultStorage(opts: CreateStorageOptions = {}): TokenStor
       store.set(COOKIE_PASSWORD_KEY, encrypt(generated));
       return generated;
     },
+
+    setPendingVerifier(key: string, value: string): void {
+      const map = readPendingVerifiers();
+      pruneExpiredVerifiers(map);
+      map[key] = { value, expiresAt: Date.now() + PENDING_VERIFIER_TTL_MS };
+      writePendingVerifiers(map);
+    },
+
+    takePendingVerifier(key: string): string | null {
+      const map = readPendingVerifiers();
+      const entry = map[key];
+      // Always remove the key we were asked for (single-use), even if expired.
+      if (key in map) {
+        delete map[key];
+      }
+      const wasExpired = !!entry && entry.expiresAt <= Date.now();
+      pruneExpiredVerifiers(map);
+      writePendingVerifiers(map);
+      if (!entry || wasExpired) {
+        return null;
+      }
+      return entry.value;
+    },
   };
+
+  /** Decrypt + parse the pending-verifier map; an absent/corrupt store is {}. */
+  function readPendingVerifiers(): Record<string, PendingVerifierEntry> {
+    const decrypted = decrypt(store.get(PENDING_VERIFIER_KEY));
+    if (!decrypted) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(decrypted) as unknown;
+      if (parsed && typeof parsed === 'object') {
+        return parsed as Record<string, PendingVerifierEntry>;
+      }
+      return {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Persist the pending-verifier map (encrypted), or clear the key if empty. */
+  function writePendingVerifiers(map: Record<string, PendingVerifierEntry>): void {
+    if (Object.keys(map).length === 0) {
+      store.delete(PENDING_VERIFIER_KEY);
+      return;
+    }
+    store.set(PENDING_VERIFIER_KEY, encrypt(JSON.stringify(map)));
+  }
 }

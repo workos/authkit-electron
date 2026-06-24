@@ -26,7 +26,19 @@ export interface TokenStorage {
   clearSession(): void;
   /** Per-install, >= 32 char secret used to seal in-flight PKCE state. */
   getOrCreateCookiePassword(): string;
-  // Phase 2 adds: setPendingVerifier / takePendingVerifier
+  /**
+   * Persist an in-flight PKCE verifier (the sealed state blob) under `key`,
+   * with a single-use semantic and a TTL matching the core's PKCE seal (10
+   * minutes). Used at sign-in to remember the `sealedState` so the callback can
+   * verify it. NOT a cookie — it lives only in the main process.
+   */
+  setPendingVerifier(key: string, value: string): void;
+  /**
+   * Atomically read AND remove a pending verifier by `key`. Returns null when
+   * absent or expired. Single-use: a second `take` for the same key returns
+   * null, so a replayed callback cannot reuse a consumed verifier.
+   */
+  takePendingVerifier(key: string): string | null;
 }
 
 /**

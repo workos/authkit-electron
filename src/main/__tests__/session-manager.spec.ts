@@ -1,8 +1,55 @@
+import type { WorkOS } from '@workos-inc/node';
 import type { User } from '@workos-inc/node';
 import type { AuthKitCore, AuthOperations } from '@workos/authkit-session';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Ceremony } from '../ceremony/index.js';
 import type { AuthResult, BaseTokenClaims, Session, TokenStorage } from '../../shared/types.js';
 import { createSessionManager } from '../session-manager.js';
+
+/**
+ * The Phase 2 deps (`client`, `clientId`, `ceremony`) the session-manager now
+ * requires. The Phase 1 tests below only exercise getUser/signOut/switchOrg, so
+ * a stub `client`/`ceremony` keeps those construction calls valid without
+ * affecting their behavior.
+ */
+function makeClient(behavior: { authenticateWithCode?: ReturnType<typeof vi.fn> } = {}): {
+  client: WorkOS;
+  authenticateWithCode: ReturnType<typeof vi.fn>;
+} {
+  const authenticateWithCode = behavior.authenticateWithCode ?? vi.fn();
+  return {
+    client: { userManagement: { authenticateWithCode } } as unknown as WorkOS,
+    authenticateWithCode,
+  };
+}
+
+function makeCeremony(behavior: { open?: ReturnType<typeof vi.fn> } = {}): {
+  ceremony: Ceremony;
+  open: ReturnType<typeof vi.fn>;
+} {
+  const open = behavior.open ?? vi.fn((_url: string) => Promise.resolve());
+  const ceremony: Ceremony = {
+    open: open as Ceremony['open'],
+    onCallback: () => () => {},
+  };
+  return { ceremony, open };
+}
+
+/** The Phase 1 trio plus stub Phase 2 deps, for the legacy construction calls. */
+function baseDeps(
+  core: AuthKitCore,
+  operations: AuthOperations,
+  storage: TokenStorage,
+): Parameters<typeof createSessionManager>[0] {
+  return {
+    core,
+    operations,
+    storage,
+    client: makeClient().client,
+    clientId: 'client_test',
+    ceremony: makeCeremony().ceremony,
+  };
+}
 
 /**
  * Unit-test the session-manager's orchestration against FAKE `core` /
@@ -69,19 +116,32 @@ function makeOperations(behavior: {
 function makeStorage(initial: Session | null): TokenStorage & {
   setSession: ReturnType<typeof vi.fn>;
   clearSession: ReturnType<typeof vi.fn>;
+  setPendingVerifier: ReturnType<typeof vi.fn>;
+  takePendingVerifier: ReturnType<typeof vi.fn>;
 } {
   let current = initial;
+  const pending = new Map<string, string>();
   const setSession = vi.fn((s: Session) => {
     current = s;
   });
   const clearSession = vi.fn(() => {
     current = null;
   });
+  const setPendingVerifier = vi.fn((key: string, value: string) => {
+    pending.set(key, value);
+  });
+  const takePendingVerifier = vi.fn((key: string) => {
+    const v = pending.get(key) ?? null;
+    pending.delete(key);
+    return v;
+  });
   return {
     getSession: () => current,
     setSession,
     clearSession,
     getOrCreateCookiePassword: () => 'x'.repeat(32),
+    setPendingVerifier,
+    takePendingVerifier,
   };
 }
 
@@ -100,7 +160,7 @@ describe('getUser', () => {
     const { core } = makeCore({});
     const { operations } = makeOperations({});
     const storage = makeStorage(null);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const auth = await manager.getUser();
     expect(auth.user).toBeNull();
@@ -116,7 +176,7 @@ describe('getUser', () => {
     const { core } = makeCore({ validateAndRefresh });
     const { operations } = makeOperations({});
     const storage = makeStorage(session);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const auth = await manager.getUser();
 
@@ -145,7 +205,7 @@ describe('getUser', () => {
     const { core } = makeCore({ validateAndRefresh });
     const { operations } = makeOperations({});
     const storage = makeStorage(session);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const auth = await manager.getUser();
 
@@ -166,7 +226,7 @@ describe('getUser', () => {
     const { core } = makeCore({ validateAndRefresh });
     const { operations } = makeOperations({});
     const storage = makeStorage(session);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const auth = await manager.getUser();
 
@@ -185,11 +245,7 @@ describe('getAccessToken', () => {
     }));
     const { core } = makeCore({ validateAndRefresh });
     const { operations } = makeOperations({});
-    const manager = createSessionManager({
-      core,
-      operations,
-      storage: makeStorage(session),
-    });
+    const manager = createSessionManager(baseDeps(core, operations, makeStorage(session)));
 
     expect(await manager.getAccessToken()).toBe('access_1');
   });
@@ -197,11 +253,7 @@ describe('getAccessToken', () => {
   it('returns null when signed out', async () => {
     const { core } = makeCore({});
     const { operations } = makeOperations({});
-    const manager = createSessionManager({
-      core,
-      operations,
-      storage: makeStorage(null),
-    });
+    const manager = createSessionManager(baseDeps(core, operations, makeStorage(null)));
 
     expect(await manager.getAccessToken()).toBeNull();
   });
@@ -212,11 +264,7 @@ describe('getAccessToken', () => {
     });
     const { core } = makeCore({ validateAndRefresh });
     const { operations } = makeOperations({});
-    const manager = createSessionManager({
-      core,
-      operations,
-      storage: makeStorage(session),
-    });
+    const manager = createSessionManager(baseDeps(core, operations, makeStorage(session)));
 
     expect(await manager.getAccessToken()).toBeNull();
   });
@@ -229,7 +277,7 @@ describe('signOut', () => {
     const { core } = makeCore({ parseTokenClaims });
     const { operations } = makeOperations({ getLogoutUrl });
     const storage = makeStorage(session);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const { logoutUrl } = await manager.signOut();
 
@@ -244,11 +292,7 @@ describe('signOut', () => {
     const getLogoutUrl = vi.fn(() => 'https://api.workos.com/logout');
     const { core } = makeCore({});
     const { operations } = makeOperations({ getLogoutUrl });
-    const manager = createSessionManager({
-      core,
-      operations,
-      storage: makeStorage(session),
-    });
+    const manager = createSessionManager(baseDeps(core, operations, makeStorage(session)));
 
     await manager.signOut({ returnTo: 'https://app.example.com' });
 
@@ -261,7 +305,7 @@ describe('signOut', () => {
     const { core } = makeCore({});
     const { operations, getLogoutUrl } = makeOperations({});
     const storage = makeStorage(null);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const { logoutUrl } = await manager.signOut();
 
@@ -277,7 +321,7 @@ describe('signOut', () => {
     const { core } = makeCore({ parseTokenClaims });
     const { operations, getLogoutUrl } = makeOperations({});
     const storage = makeStorage(session);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const { logoutUrl } = await manager.signOut();
 
@@ -304,7 +348,7 @@ describe('switchToOrganization', () => {
     const { core } = makeCore({});
     const { operations } = makeOperations({ switchOrganization });
     const storage = makeStorage(session);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const result = await manager.switchToOrganization('org_2');
 
@@ -325,7 +369,7 @@ describe('switchToOrganization', () => {
     const { core } = makeCore({});
     const { operations, switchOrganization } = makeOperations({});
     const storage = makeStorage(null);
-    const manager = createSessionManager({ core, operations, storage });
+    const manager = createSessionManager(baseDeps(core, operations, storage));
 
     const result = await manager.switchToOrganization('org_2');
 

@@ -11,7 +11,9 @@
  * is unit-testable by injecting fake `core`/`operations`/`storage` collaborators.
  */
 
+import type { WorkOS } from '@workos-inc/node';
 import type { AuthKitCore, AuthOperations } from '@workos/authkit-session';
+import type { Ceremony } from './ceremony/index.js';
 import type {
   AuthResult,
   BaseTokenClaims,
@@ -19,6 +21,12 @@ import type {
   Session,
   TokenStorage,
 } from '../shared/types.js';
+
+/** Options accepted when beginning a sign-in ceremony. */
+export interface BeginSignInOptions {
+  screenHint?: 'sign-in' | 'sign-up';
+  organizationId?: string;
+}
 
 export interface SessionManager {
   /** Decrypt -> validateAndRefresh -> persist if refreshed. */
@@ -29,13 +37,35 @@ export interface SessionManager {
   signOut(opts?: { returnTo?: string }): Promise<{ logoutUrl: string }>;
   /** Force-refresh into a new organization and persist the new session. */
   switchToOrganization(orgId: string): Promise<AuthResult>;
-  // Phase 2 adds: beginSignIn() and completeCallback(code, state)
+  /**
+   * Begin a sign-in: create a PKCE-bound authorization URL, persist the sealed
+   * state main-side, and hand the URL to the ceremony (system browser by
+   * default). The callback returns asynchronously via {@link completeCallback}.
+   */
+  beginSignIn(opts?: BeginSignInOptions): Promise<void>;
+  /**
+   * Complete an OAuth callback: verify the deep-link `state` against the
+   * persisted sealed state, exchange the code for tokens, persist the session,
+   * and return the resulting `AuthResult`. Throws on any verification or
+   * exchange failure (the IPC layer maps that to a typed error result).
+   */
+  completeCallback(code: string, state: string | undefined): Promise<AuthResult>;
 }
 
 export interface SessionManagerDeps {
   core: AuthKitCore;
   operations: AuthOperations;
   storage: TokenStorage;
+  /**
+   * The injected public WorkOS client. Needed for the authorization-code
+   * exchange (`userManagement.authenticateWithCode`), which `AuthOperations`
+   * does not expose because that step is cookie/`AuthService`-bound upstream.
+   */
+  client: WorkOS;
+  /** WorkOS client ID, passed to the code exchange. */
+  clientId: string;
+  /** The sign-in ceremony (system browser by default). */
+  ceremony: Ceremony;
 }
 
 /**
@@ -65,7 +95,7 @@ function toAuthResult<TCustomClaims = CustomClaims>(
 }
 
 export function createSessionManager(deps: SessionManagerDeps): SessionManager {
-  const { core, operations, storage } = deps;
+  const { core, operations, storage, client, clientId, ceremony } = deps;
 
   async function getUser(): Promise<AuthResult> {
     const session = storage.getSession();
@@ -132,5 +162,63 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     return auth;
   }
 
-  return { getUser, getAccessToken, signOut, switchToOrganization };
+  async function beginSignIn(opts?: BeginSignInOptions): Promise<void> {
+    // `createAuthorization` seals the PKCE verifier into `sealedState` and also
+    // embeds `state=sealedState` in the URL. We persist the SAME sealed blob
+    // main-side (key === value) so the callback can byte-compare and unseal it.
+    const { url, sealedState } = await operations.createAuthorization({
+      screenHint: opts?.screenHint,
+      organizationId: opts?.organizationId,
+    });
+    storage.setPendingVerifier(sealedState, sealedState);
+    await ceremony.open(url);
+  }
+
+  async function completeCallback(
+    code: string,
+    state: string | undefined,
+  ): Promise<AuthResult> {
+    // Single-use take: pull (and remove) the sealed state we persisted at
+    // sign-in. A missing/replayed state yields null, and `verifyCallbackState`
+    // then rejects with OAuthStateMismatchError / PKCECookieMissingError.
+    const stored = state ? storage.takePendingVerifier(state) : null;
+
+    // Verify (constant-time byte-compare + unseal) and recover the PKCE
+    // codeVerifier. Any failure here throws before we touch the network.
+    const { codeVerifier } = await core.verifyCallbackState({
+      stateFromUrl: state,
+      cookieValue: stored ?? undefined,
+    });
+
+    // Exchange the authorization code for tokens. `AuthOperations` does not
+    // expose this (it is AuthService/cookie-bound upstream), so call the
+    // injected client directly — the public client implements it.
+    const res = await client.userManagement.authenticateWithCode({
+      code,
+      clientId,
+      codeVerifier,
+    });
+
+    const session: Session = {
+      accessToken: res.accessToken,
+      refreshToken: res.refreshToken,
+      user: res.user,
+      impersonator: res.impersonator,
+    };
+    storage.setSession(session);
+
+    // Claims are local (no network) — parse them off the freshly minted access
+    // token to build the same AuthResult shape getUser/switchOrg return.
+    const claims = core.parseTokenClaims(session.accessToken);
+    return toAuthResult(session, claims);
+  }
+
+  return {
+    getUser,
+    getAccessToken,
+    signOut,
+    switchToOrganization,
+    beginSignIn,
+    completeCallback,
+  };
 }

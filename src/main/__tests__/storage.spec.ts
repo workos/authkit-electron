@@ -207,6 +207,78 @@ describe('createDefaultStorage — safeStorage unavailable', () => {
   });
 });
 
+describe('createDefaultStorage — pending verifiers', () => {
+  it('round-trips a pending verifier and takes it once (single-use)', () => {
+    const storage = createDefaultStorage({
+      store: makeStore(),
+      safeStorage: makeSafeStorage(),
+    });
+
+    storage.setPendingVerifier('state-abc', 'sealed-blob');
+    expect(storage.takePendingVerifier('state-abc')).toBe('sealed-blob');
+    // Second take returns null — the verifier was consumed.
+    expect(storage.takePendingVerifier('state-abc')).toBeNull();
+  });
+
+  it('returns null for an unknown key', () => {
+    const storage = createDefaultStorage({
+      store: makeStore(),
+      safeStorage: makeSafeStorage(),
+    });
+    expect(storage.takePendingVerifier('nope')).toBeNull();
+  });
+
+  it('stores the verifier encrypted, not as plaintext', () => {
+    const store = makeStore();
+    const storage = createDefaultStorage({ store, safeStorage: makeSafeStorage() });
+
+    storage.setPendingVerifier('state-abc', 'super-secret-seal');
+    const stored = store.raw.get('pendingVerifiers') as string;
+    expect(typeof stored).toBe('string');
+    expect(stored).toContain('enc:');
+    expect(stored).not.toContain('super-secret-seal');
+  });
+
+  it('supports concurrent pending verifiers under different keys', () => {
+    const storage = createDefaultStorage({
+      store: makeStore(),
+      safeStorage: makeSafeStorage(),
+    });
+
+    storage.setPendingVerifier('state-1', 'seal-1');
+    storage.setPendingVerifier('state-2', 'seal-2');
+
+    expect(storage.takePendingVerifier('state-1')).toBe('seal-1');
+    // Taking one leaves the other intact.
+    expect(storage.takePendingVerifier('state-2')).toBe('seal-2');
+  });
+
+  it('treats an expired verifier as absent (TTL)', () => {
+    const store = makeStore();
+    const ss = makeSafeStorage();
+    const storage = createDefaultStorage({ store, safeStorage: ss });
+
+    const now = 1_000_000_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
+    storage.setPendingVerifier('state-old', 'seal-old');
+
+    // Jump past the 10-minute TTL.
+    nowSpy.mockReturnValue(now + 10 * 60 * 1000 + 1);
+    expect(storage.takePendingVerifier('state-old')).toBeNull();
+
+    nowSpy.mockRestore();
+  });
+
+  it('clears the store key once the last verifier is taken', () => {
+    const store = makeStore();
+    const storage = createDefaultStorage({ store, safeStorage: makeSafeStorage() });
+
+    storage.setPendingVerifier('only', 'seal');
+    storage.takePendingVerifier('only');
+    expect(store.raw.has('pendingVerifiers')).toBe(false);
+  });
+});
+
 describe('createDefaultStorage — default electron bindings', () => {
   it('constructs without injected deps (uses mocked electron + electron-store)', () => {
     // Exercises the default `safeStorage` / `new ElectronStore()` branch.
