@@ -18,6 +18,13 @@
  * `open-url` fired before `whenReady`) before the consumer wires `onUrl`. We
  * stash such URLs and flush them as soon as the handler attaches, so a sign-in
  * started before the app was running is not silently lost.
+ *
+ * Window-ceremony interaction (no double-handle): in `ceremony.mode: 'window'`
+ * the auth window intercepts the redirect with `preventDefault()` BEFORE it
+ * commits, so the `redirectUri` navigation never escapes to the OS and these
+ * listeners never fire for it. The window ceremony delivers the callback
+ * directly via `Ceremony.onCallback`, so a window-mode callback is handled
+ * exactly once. No change to this matrix is required for window mode.
  */
 
 import { resolve } from 'node:path';

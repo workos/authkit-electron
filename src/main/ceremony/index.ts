@@ -16,6 +16,11 @@
 
 import type { AuthKitElectronConfig } from '../../shared/types.js';
 import { createSystemBrowserCeremony } from './system-browser.js';
+import {
+  type BrowserWindowFactory,
+  type BrowserWindowLike,
+  createWindowCeremony,
+} from './window.js';
 
 export interface Ceremony {
   /** Take the user to the authorization URL to begin authentication. */
@@ -34,22 +39,31 @@ export interface ShellLike {
 }
 
 export interface CreateCeremonyOptions {
-  /** Injectable for tests; defaults to Electron's `shell`. */
+  /** Injectable for tests; defaults to Electron's `shell` (system-browser mode). */
   shell?: ShellLike;
+  /** Injectable `BrowserWindow` factory for tests (window mode). */
+  createWindow?: BrowserWindowFactory;
+  /** Optional parent for the auth window; makes it modal (window mode). */
+  parent?: BrowserWindowLike;
 }
 
 /**
  * Select and construct the ceremony for the given config.
  *
- * Defaults to `system-browser`. The `window` mode is registered in Phase 4;
- * until then, selecting it falls back to the system browser.
+ * Defaults to `system-browser`. `config.ceremony.mode: 'window'` selects the
+ * in-app `BrowserWindow` ceremony, which captures its callback by intercepting
+ * navigation to `config.redirectUri` rather than via the OS protocol handler.
  */
 export function createCeremony(
   config: AuthKitElectronConfig,
   opts: CreateCeremonyOptions = {},
 ): Ceremony {
-  // `config.ceremony?.mode` is reserved for the Phase 4 window ceremony; only
-  // system-browser exists today, so every mode resolves to it.
-  void config;
+  if (config.ceremony?.mode === 'window') {
+    return createWindowCeremony({
+      redirectUri: config.redirectUri,
+      parent: opts.parent,
+      createWindow: opts.createWindow,
+    });
+  }
   return createSystemBrowserCeremony(opts);
 }

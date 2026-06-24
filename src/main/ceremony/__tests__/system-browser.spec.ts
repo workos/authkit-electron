@@ -3,9 +3,9 @@ import type { AuthKitElectronConfig } from '../../../shared/types.js';
 import { createCeremony } from '../index.js';
 import { createSystemBrowserCeremony } from '../system-browser.js';
 
-// The ceremony imports `shell` from electron; inject a fake `shell`, so this
-// mock only prevents the native binding from loading.
-vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
+// The ceremonies import `shell`/`BrowserWindow` from electron; tests inject
+// their own, so this mock only prevents the native binding from loading.
+vi.mock('electron', () => ({ shell: { openExternal: vi.fn() }, BrowserWindow: vi.fn() }));
 
 const config: AuthKitElectronConfig = {
   clientId: 'client_test',
@@ -40,13 +40,22 @@ describe('createCeremony', () => {
     expect(openExternal).toHaveBeenCalledWith('https://example.com');
   });
 
-  it('falls back to system-browser even when window mode is requested (Phase 4)', async () => {
+  it('selects the window ceremony when window mode is requested (Phase 4)', async () => {
     const openExternal = vi.fn(async () => {});
+    const createWindow = vi.fn(() => ({
+      webContents: { on: vi.fn() },
+      loadURL: vi.fn(async () => {}),
+      close: vi.fn(),
+      isDestroyed: () => false,
+      on: vi.fn(),
+    }));
     const ceremony = createCeremony(
       { ...config, ceremony: { mode: 'window' } },
-      { shell: { openExternal } },
+      { shell: { openExternal }, createWindow },
     );
     await ceremony.open('https://example.com');
-    expect(openExternal).toHaveBeenCalled();
+    // Window mode opens an in-app BrowserWindow, NOT the system browser.
+    expect(createWindow).toHaveBeenCalledTimes(1);
+    expect(openExternal).not.toHaveBeenCalled();
   });
 });

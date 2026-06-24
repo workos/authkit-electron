@@ -89,7 +89,13 @@ export function createAuthKit(
   const client: WorkOS = opts.client ?? createPublicWorkOS(config.clientId);
   const core = new AuthKitCore(authKitConfig, client, sessionEncryption);
   const operations = new AuthOperations(core, client, authKitConfig, sessionEncryption);
-  const ceremony: Ceremony = opts.ceremony ?? createCeremony(config, { shell: opts.shell });
+  const ceremony: Ceremony =
+    opts.ceremony ??
+    createCeremony(config, {
+      shell: opts.shell,
+      createWindow: opts.createWindow,
+      parent: opts.parent,
+    });
 
   const sessionManager = createSessionManager({
     core,
@@ -140,6 +146,15 @@ export function createAuthKit(
     }
   }
 
+  // Window-ceremony callbacks arrive here (the ceremony intercepts navigation
+  // to `redirectUri` in-window and pushes the captured URL through `onCallback`)
+  // rather than via the OS protocol handler — so they reuse the SAME completion
+  // path as deep links with no double-handle. For the system-browser ceremony
+  // `onCallback` is a no-op, so this subscription is inert.
+  const removeCeremonyCallback = ceremony.onCallback((url) => {
+    void handleCallbackUrl(url);
+  });
+
   function registerProtocol(): void {
     registerProtocolImpl(scheme, { app: opts.app, process: opts.process });
     removeDeepLinks = wireDeepLinks(
@@ -153,6 +168,7 @@ export function createAuthKit(
 
   function cleanup(): void {
     removeIpcHandlers();
+    removeCeremonyCallback();
     removeDeepLinks?.();
     removeDeepLinks = null;
   }
