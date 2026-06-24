@@ -13,8 +13,7 @@
  */
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import type { IpcResult } from '../main/ipc-handlers.js';
-import type { SignInOptions } from '../preload/index.js';
+import type { IpcResult, SignInOptions } from '../shared/ipc.js';
 import type { RendererAuthPayload } from '../shared/types.js';
 import { AuthKitContext, type AuthKitContextValue, useBridge } from './context.js';
 
@@ -74,13 +73,13 @@ export function AuthKitProvider({ children }: AuthKitProviderProps): ReactNode {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const value = useMemo<AuthKitContextValue>(() => {
-    const { auth, isLoading } = state;
-
-    const actions: Pick<
-      AuthKitContextValue,
-      'signIn' | 'signOut' | 'switchToOrganization' | 'getAccessToken'
-    > = {
+  // Actions only close over the (stable) bridge, so memoize them once — their
+  // identities stay stable across auth-state pushes, so a consumer depending on
+  // e.g. `signIn` doesn't see a new function on every state change.
+  const actions = useMemo<
+    Pick<AuthKitContextValue, 'signIn' | 'signOut' | 'switchToOrganization' | 'getAccessToken'>
+  >(
+    () => ({
       signIn: async (opts?: SignInOptions) => {
         const result = await bridge.signIn(opts);
         if (!result.ok) {
@@ -107,12 +106,15 @@ export function AuthKitProvider({ children }: AuthKitProviderProps): ReactNode {
         const result = await bridge.getAccessToken();
         return result.ok ? result.data : null;
       },
-    };
+    }),
+    [bridge],
+  );
 
+  const value = useMemo<AuthKitContextValue>(() => {
+    const { auth, isLoading } = state;
     if (auth.user === null) {
       return { user: null, isLoading, ...actions };
     }
-
     return {
       user: auth.user,
       isLoading,
@@ -127,7 +129,7 @@ export function AuthKitProvider({ children }: AuthKitProviderProps): ReactNode {
       claims: auth.claims,
       ...actions,
     };
-  }, [state, bridge]);
+  }, [state, actions]);
 
   return <AuthKitContext.Provider value={value}>{children}</AuthKitContext.Provider>;
 }

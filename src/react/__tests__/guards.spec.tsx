@@ -11,7 +11,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthKitBridge } from '../../preload/index.js';
-import type { IpcResult } from '../../main/ipc-handlers.js';
+import type { IpcResult } from '../../shared/ipc.js';
 import type { RendererAuthPayload, User } from '../../shared/types.js';
 import { AUTHKIT_BRIDGE_KEY } from '../../preload/index.js';
 import { AuthKitProvider } from '../auth-kit-provider.js';

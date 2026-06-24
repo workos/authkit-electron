@@ -14,10 +14,14 @@
  * attaches both listeners and the single-instance lock, routing every callback
  * URL to one `onUrl` sink (the session manager's `completeCallback`).
  *
- * Cold-start buffering: a URL can arrive (Windows initial `argv`, or an
- * `open-url` fired before `whenReady`) before the consumer wires `onUrl`. We
- * stash such URLs and flush them as soon as the handler attaches, so a sign-in
- * started before the app was running is not silently lost.
+ * Cold-start delivery: on Windows/Linux the launching callback URL is appended
+ * to the process `argv`; `wireDeepLinks` reads `argv` and delivers any such URL
+ * to `onUrl` SYNCHRONOUSLY before it returns, so a deep link that cold-started
+ * the app is not lost. The macOS `open-url` and the Windows/Linux
+ * `second-instance` events fire through the listeners attached here, so
+ * `registerProtocol()` + `wireDeepLinks` must run early — inside
+ * `app.whenReady()`, before the first window — to catch a callback that arrives
+ * at startup. There is no buffering beyond the synchronous `argv` flush.
  *
  * Window-ceremony interaction (no double-handle): in `ceremony.mode: 'window'`
  * the auth window intercepts the redirect with `preventDefault()` BEFORE it

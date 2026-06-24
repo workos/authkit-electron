@@ -1,5 +1,6 @@
 import type { WorkOS } from '@workos-inc/node';
 import type { User } from '@workos-inc/node';
+import { TokenRefreshError, TokenValidationError } from '@workos/authkit-session';
 import type { AuthKitCore, AuthOperations } from '@workos/authkit-session';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ceremony } from '../ceremony/index.js';
@@ -219,9 +220,9 @@ describe('getUser', () => {
     }
   });
 
-  it('clears the session and returns { user: null } when refresh throws', async () => {
+  it('clears the session on a definitively-invalid token (TokenValidationError)', async () => {
     const validateAndRefresh = vi.fn(async () => {
-      throw new Error('invalid_grant');
+      throw new TokenValidationError('bad signature');
     });
     const { core } = makeCore({ validateAndRefresh });
     const { operations } = makeOperations({});
@@ -232,6 +233,24 @@ describe('getUser', () => {
 
     expect(auth.user).toBeNull();
     expect(storage.clearSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the session on a transient refresh error so a network blip does not sign the user out', async () => {
+    const validateAndRefresh = vi.fn(async () => {
+      throw new TokenRefreshError('network down');
+    });
+    const { core } = makeCore({ validateAndRefresh });
+    const { operations } = makeOperations({});
+    const storage = makeStorage(session);
+    const manager = createSessionManager(baseDeps(core, operations, storage));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const auth = await manager.getUser();
+
+    expect(auth.user).toBeNull(); // reported signed-out for now…
+    expect(storage.clearSession).not.toHaveBeenCalled(); // …but the session survives for retry
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 
@@ -260,13 +279,15 @@ describe('getAccessToken', () => {
 
   it('returns null when the refresh path fails', async () => {
     const validateAndRefresh = vi.fn(async () => {
-      throw new Error('invalid_grant');
+      throw new TokenRefreshError('network down');
     });
     const { core } = makeCore({ validateAndRefresh });
     const { operations } = makeOperations({});
     const manager = createSessionManager(baseDeps(core, operations, makeStorage(session)));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     expect(await manager.getAccessToken()).toBeNull();
+    warn.mockRestore();
   });
 });
 

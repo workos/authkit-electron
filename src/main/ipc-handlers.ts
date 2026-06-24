@@ -15,13 +15,9 @@
 
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels.js';
+import type { IpcResult } from '../shared/ipc.js';
 import { type RendererAuthPayload, toRendererAuthPayload } from '../shared/types.js';
 import type { SessionManager } from './session-manager.js';
-
-/** Discriminated result returned across every renderer→main `invoke`. */
-export type IpcResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: { code: string; message: string } };
 
 /** Minimal `ipcMain` surface (injectable for tests). */
 export interface IpcMainLike {

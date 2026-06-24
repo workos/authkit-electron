@@ -12,6 +12,7 @@
  */
 
 import type { WorkOS } from '@workos-inc/node';
+import { TokenValidationError } from '@workos/authkit-session';
 import type { AuthKitCore, AuthOperations } from '@workos/authkit-session';
 import type { Ceremony } from './ceremony/index.js';
 import type {
@@ -110,10 +111,22 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         storage.setSession(result.session);
       }
       return toAuthResult(result.session, result.claims);
-    } catch {
-      // Refresh token invalid/expired (or any validation failure):
-      // the session is unusable. Clear it and report signed-out.
-      storage.clearSession();
+    } catch (err) {
+      // Only a definitively-invalid token (bad signature/claims, surfaced as
+      // TokenValidationError) means the stored session can never work again —
+      // clear it so the user re-authenticates. A transient failure (e.g. a
+      // network blip during refresh, surfaced as TokenRefreshError) must NOT
+      // sign the user out: keep the session so the next getUser() retries
+      // instead of forcing a spurious re-login.
+      if (err instanceof TokenValidationError) {
+        storage.clearSession();
+      } else {
+        console.warn(
+          '[authkit-electron] getUser: keeping the session after a non-fatal ' +
+            'validateAndRefresh error (will retry next call):',
+          err,
+        );
+      }
       return { user: null };
     }
   }

@@ -26,4 +26,4 @@ export type { AuthKitContextValue } from './context.js';
 // Re-export the renderer-relevant types so consumers can annotate without
 // reaching into deep paths. (User/claims originate from @workos-inc/node.)
 export type { AuthKitClaims, Impersonator, RendererAuthPayload, User } from '../shared/types.js';
-export type { SignInOptions } from '../preload/index.js';
+export type { SignInOptions } from '../shared/ipc.js';

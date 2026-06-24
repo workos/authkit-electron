@@ -66,14 +66,13 @@ describe('exposeAuthKit — contextIsolated branch', () => {
     expect(typeof bridge.onAuthChange).toBe('function');
   });
 
-  it('swallows a contextBridge failure without throwing', () => {
+  it('throws a clear error when contextBridge exposure fails', () => {
     exposeInMainWorld.mockImplementationOnce(() => {
       throw new Error('already set up');
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => exposeAuthKit()).not.toThrow();
-    expect(errorSpy).toHaveBeenCalled();
-    errorSpy.mockRestore();
+    // A failed expose is a setup bug — fail loudly at the source rather than
+    // letting the renderer hit an undefined bridge later.
+    expect(() => exposeAuthKit()).toThrow(/failed to expose the preload bridge/);
   });
 });
 

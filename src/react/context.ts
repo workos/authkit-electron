@@ -15,7 +15,7 @@
  */
 
 import { createContext, useContext } from 'react';
-import type { AuthKitBridge, SignInOptions } from '../preload/index.js';
+import type { AuthKitBridge, SignInOptions } from '../shared/ipc.js';
 import type { AuthKitClaims, Impersonator, User } from '../shared/types.js';
 
 /**

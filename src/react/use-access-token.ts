@@ -19,8 +19,8 @@ import { useBridge } from './context.js';
 export interface UseAccessTokenResult {
   /** The current access token, or `null` when signed out or not yet loaded. */
   accessToken: string | null;
-  /** True while a fetch is in flight. */
-  loading: boolean;
+  /** True while a fetch is in flight. Matches `useAuth`'s `isLoading`. */
+  isLoading: boolean;
   /** The last fetch error, or `null`. */
   error: Error | null;
   /** Re-fetch the token (triggers main-side validate-and-refresh). */
@@ -30,7 +30,7 @@ export interface UseAccessTokenResult {
 export function useAccessToken(): UseAccessTokenResult {
   const bridge = useBridge();
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   // Monotonic request id: only the most recent fetch may write state. This
@@ -40,7 +40,7 @@ export function useAccessToken(): UseAccessTokenResult {
 
   const fetchToken = useCallback(async (): Promise<string | null> => {
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    setIsLoading(true);
     try {
       const result = await bridge.getAccessToken();
       // A newer fetch (or a sign-out reset) superseded us — drop this response.
@@ -50,14 +50,14 @@ export function useAccessToken(): UseAccessTokenResult {
       if (result.ok) {
         setAccessToken(result.data);
         setError(null);
-        setLoading(false);
+        setIsLoading(false);
         return result.data;
       }
       const err = new Error(result.error.message);
       err.name = result.error.code;
       setAccessToken(null);
       setError(err);
-      setLoading(false);
+      setIsLoading(false);
       return null;
     } catch (cause) {
       if (requestId !== requestIdRef.current) {
@@ -66,7 +66,7 @@ export function useAccessToken(): UseAccessTokenResult {
       const err = cause instanceof Error ? cause : new Error(String(cause));
       setAccessToken(null);
       setError(err);
-      setLoading(false);
+      setIsLoading(false);
       return null;
     }
   }, [bridge]);
@@ -81,7 +81,7 @@ export function useAccessToken(): UseAccessTokenResult {
         requestIdRef.current++;
         setAccessToken(null);
         setError(null);
-        setLoading(false);
+        setIsLoading(false);
         return;
       }
       // Signed in / org switch / refresh: re-fetch the (possibly rotated) token.
@@ -91,5 +91,5 @@ export function useAccessToken(): UseAccessTokenResult {
     return unsubscribe;
   }, [bridge, fetchToken]);
 
-  return { accessToken, loading, error, refresh: fetchToken };
+  return { accessToken, isLoading, error, refresh: fetchToken };
 }

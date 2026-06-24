@@ -15,25 +15,12 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels.js';
-import type { IpcResult } from '../main/ipc-handlers.js';
+import type { AuthKitBridge } from '../shared/ipc.js';
 import type { RendererAuthPayload } from '../shared/types.js';
 
-/** Options accepted by `signIn`, mirroring `SessionManager.beginSignIn`. */
-export interface SignInOptions {
-  screenHint?: 'sign-in' | 'sign-up';
-  organizationId?: string;
-}
-
-/** The shape exposed at `window.__authkit_electron`. */
-export interface AuthKitBridge {
-  signIn(opts?: SignInOptions): Promise<IpcResult<null>>;
-  signOut(opts?: { returnTo?: string }): Promise<IpcResult<{ logoutUrl: string }>>;
-  getUser(): Promise<IpcResult<RendererAuthPayload>>;
-  getAccessToken(): Promise<IpcResult<string | null>>;
-  switchToOrganization(organizationId: string): Promise<IpcResult<RendererAuthPayload>>;
-  /** Subscribe to auth-change broadcasts. Returns an unsubscribe function. */
-  onAuthChange(callback: (payload: RendererAuthPayload) => void): () => void;
-}
+// Re-export the cross-context contract so `@workos/authkit-electron/preload`
+// consumers (and the renderer typings) keep importing it from the preload entry.
+export type { AuthKitBridge, IpcResult, SignInOptions } from '../shared/ipc.js';
 
 /** The global key the bridge is exposed under in the renderer. */
 export const AUTHKIT_BRIDGE_KEY = '__authkit_electron';
@@ -75,8 +62,14 @@ export function exposeAuthKit(): void {
       contextBridge.exposeInMainWorld(AUTHKIT_BRIDGE_KEY, bridge);
     } catch (error) {
       // exposeInMainWorld throws if called after the context is set up, or if a
-      // non-cloneable value sneaks in. Surface it rather than silently failing.
-      console.error('[authkit-electron] failed to expose preload bridge:', error);
+      // non-cloneable value sneaks in. Both are setup bugs the developer must
+      // fix, so fail loudly at the source rather than letting the renderer hit a
+      // confusing "window.__authkit_electron is undefined" error later.
+      throw new Error(
+        '[authkit-electron] failed to expose the preload bridge via contextBridge. ' +
+          'Call exposeAuthKit() once at preload top level, before the context is established.',
+        { cause: error },
+      );
     }
   } else {
     (globalThis as unknown as Record<string, unknown>)[AUTHKIT_BRIDGE_KEY] = bridge;

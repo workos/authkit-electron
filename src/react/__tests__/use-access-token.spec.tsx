@@ -12,7 +12,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthKitBridge } from '../../preload/index.js';
-import type { IpcResult } from '../../main/ipc-handlers.js';
+import type { IpcResult } from '../../shared/ipc.js';
 import type { RendererAuthPayload, User } from '../../shared/types.js';
 import { AUTHKIT_BRIDGE_KEY } from '../../preload/index.js';
 import { AuthKitProvider } from '../auth-kit-provider.js';
@@ -79,11 +79,11 @@ function installBridge(bridge: AuthKitBridge): void {
 
 /** Probe exposing the hook result + a button that calls refresh(). */
 function TokenProbe(): React.JSX.Element {
-  const { accessToken, loading, error, refresh } = useAccessToken();
+  const { accessToken, isLoading, error, refresh } = useAccessToken();
   return (
     <div>
       <span data-testid="token">{accessToken ?? 'null'}</span>
-      <span data-testid="loading">{String(loading)}</span>
+      <span data-testid="loading">{String(isLoading)}</span>
       <span data-testid="error">{error ? error.message : 'none'}</span>
       <button type="button" onClick={() => void refresh()}>
         refresh
