@@ -5,7 +5,7 @@
  * `safeStorage`, NOT by the core's `encryptSession`. The stored value is the
  * `Session` JSON encrypted by `safeStorage`. The per-install `cookiePassword`
  * is also persisted (safeStorage-encrypted) and is stable across launches so an
- * app quit mid-sign-in can still verify the PKCE state in Phase 2.
+ * app quit mid-sign-in can still verify the PKCE state on the callback.
  */
 
 import { randomBytes } from 'node:crypto';

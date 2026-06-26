@@ -327,22 +327,23 @@ function Profile() {
 }
 ```
 
-| Property               | Type                                              | Description                                                     |
-| ---------------------- | ------------------------------------------------- | --------------------------------------------------------------- |
-| `user`                 | `User \| null`                                    | The signed-in user, or `null` when signed out                   |
-| `isLoading`            | `boolean`                                         | `true` until the first `getUser()` resolves                     |
-| `sessionId`            | `string \| undefined`                             | Session ID (signed in only)                                     |
-| `organizationId`       | `string \| undefined`                             | Active organization (signed in only)                            |
-| `role` / `roles`       | `string` / `string[] \| undefined`                | Role claim(s)                                                   |
-| `permissions`          | `string[] \| undefined`                           | Permission claims                                               |
-| `entitlements`         | `string[] \| undefined`                           | Entitlement claims                                              |
-| `featureFlags`         | `string[] \| undefined`                           | Feature-flag claims                                             |
-| `impersonator`         | `Impersonator \| undefined`                       | Present when the session is being impersonated                  |
-| `claims`               | `AuthKitClaims \| undefined`                      | The full decoded access-token claims                            |
-| `signIn`               | `(opts?: SignInOptions) => Promise<void>`         | Begin a sign-in ceremony                                        |
-| `signOut`              | `(opts?: { returnTo?: string }) => Promise<void>` | Clear the local session AND end the hosted AuthKit session      |
-| `switchToOrganization` | `(organizationId: string) => Promise<void>`       | Force-refresh into a different organization                     |
-| `getAccessToken`       | `() => Promise<string \| null>`                   | The current short-lived access token, or `null` when signed out |
+| Property               | Type                                              | Description                                                                                                     |
+| ---------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `user`                 | `User \| null`                                    | The signed-in user, or `null` when signed out                                                                   |
+| `isLoading`            | `boolean`                                         | `true` until the first `getUser()` resolves                                                                     |
+| `sessionId`            | `string \| undefined`                             | Session ID (signed in only)                                                                                     |
+| `organizationId`       | `string \| undefined`                             | Active organization (signed in only)                                                                            |
+| `role` / `roles`       | `string` / `string[] \| undefined`                | Role claim(s)                                                                                                   |
+| `permissions`          | `string[] \| undefined`                           | Permission claims                                                                                               |
+| `entitlements`         | `string[] \| undefined`                           | Entitlement claims                                                                                              |
+| `featureFlags`         | `string[] \| undefined`                           | Feature-flag claims                                                                                             |
+| `impersonator`         | `Impersonator \| undefined`                       | Present when the session is being impersonated                                                                  |
+| `claims`               | `AuthKitClaims \| undefined`                      | The full decoded access-token claims                                                                            |
+| `error`                | `AuthErrorPayload \| null`                        | The last sign-in failure (denied/cancelled/exchange error), else `null`; cleared on the next successful sign-in |
+| `signIn`               | `(opts?: SignInOptions) => Promise<void>`         | Begin a sign-in ceremony                                                                                        |
+| `signOut`              | `(opts?: { returnTo?: string }) => Promise<void>` | Clear the local session AND end the hosted AuthKit session                                                      |
+| `switchToOrganization` | `(organizationId: string) => Promise<void>`       | Force-refresh into a different organization                                                                     |
+| `getAccessToken`       | `() => Promise<string \| null>`                   | The current short-lived access token, or `null` when signed out                                                 |
 
 `signIn` accepts `SignInOptions`:
 
@@ -353,6 +354,19 @@ signIn({ organizationId: 'org_123' }); // scope the sign-in to an org
 
 > [!NOTE]
 > The main process is the single source of truth. Auth changes (sign-in, sign-out, org switch) **broadcast to every window**, so signing out in one window updates all of them.
+
+> [!TIP]
+> When a sign-in is denied, cancelled, or the code exchange fails, the callback completes with no auth change. Rather than leaving the user silently signed out, the main process broadcasts a safe `{ code, message }` error (never tokens) that surfaces as `useAuth().error`:
+>
+> ```tsx
+> const { error, signIn } = useAuth();
+> // ...
+> {
+>   error && <p role="alert">Sign-in failed: {error.message}</p>;
+> }
+> ```
+>
+> `error` is cleared automatically on the next successful sign-in.
 
 ### Guards: `<SignedIn>` / `<SignedOut>`
 

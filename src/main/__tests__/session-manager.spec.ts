@@ -8,10 +8,10 @@ import type { AuthResult, BaseTokenClaims, Session, TokenStorage } from '../../s
 import { createSessionManager } from '../session-manager.js';
 
 /**
- * The Phase 2 deps (`client`, `clientId`, `ceremony`) the session-manager now
- * requires. The Phase 1 tests below only exercise getUser/signOut/switchOrg, so
- * a stub `client`/`ceremony` keeps those construction calls valid without
- * affecting their behavior.
+ * The `client`/`clientId`/`ceremony` deps the session-manager requires. The
+ * tests below that only exercise getUser/signOut/switchOrg use a stub
+ * `client`/`ceremony` to keep those construction calls valid without affecting
+ * their behavior.
  */
 function makeClient(behavior: { authenticateWithCode?: ReturnType<typeof vi.fn> } = {}): {
   client: WorkOS;
@@ -41,7 +41,7 @@ function makeCeremony(
   return { ceremony, open, endSession };
 }
 
-/** The Phase 1 trio plus stub Phase 2 deps, for the legacy construction calls. */
+/** The core/operations/storage trio plus stub client/ceremony deps. */
 function baseDeps(
   core: AuthKitCore,
   operations: AuthOperations,

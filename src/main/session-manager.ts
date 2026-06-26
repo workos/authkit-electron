@@ -3,12 +3,13 @@
  *
  * Composes authkit-session's `AuthKitCore` + `AuthOperations` (built from an
  * injected public WorkOS client) with Electron-native persistence. This is the
- * orchestrator the IPC layer (Phase 2) calls into. It owns the
+ * orchestrator the IPC layer calls into. It owns the
  * decrypt -> validate/refresh -> persist flow and confines the refresh token to
  * the main process.
  *
- * No `BrowserWindow`/`ipcMain` here — that is Phase 2. Everything in this file
- * is unit-testable by injecting fake `core`/`operations`/`storage` collaborators.
+ * No `BrowserWindow`/`ipcMain` here — that lives in the IPC layer. Everything in
+ * this file is unit-testable by injecting fake `core`/`operations`/`storage`
+ * collaborators.
  */
 
 import type { WorkOS } from '@workos-inc/node';
