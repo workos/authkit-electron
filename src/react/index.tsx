@@ -2,7 +2,7 @@
  * `@workos/authkit-electron/react` — the renderer surface.
  *
  * A thin, framework-idiomatic wrapper over the IPC bridge exposed by
- * `exposeAuthKit()` (Phase 2) on `window.__authkit_electron`. It holds only
+ * `exposeAuthKit()` on `window.__authkit_electron`. It holds only
  * renderer-safe state (`user` + claims + the short-lived access token) and
  * never the refresh token — that token has no IPC channel.
  *
@@ -25,5 +25,11 @@ export type { AuthKitContextValue } from './context.js';
 
 // Re-export the renderer-relevant types so consumers can annotate without
 // reaching into deep paths. (User/claims originate from @workos-inc/node.)
-export type { AuthKitClaims, Impersonator, RendererAuthPayload, User } from '../shared/types.js';
+export type {
+  AuthErrorPayload,
+  AuthKitClaims,
+  Impersonator,
+  RendererAuthPayload,
+  User,
+} from '../shared/types.js';
 export type { SignInOptions } from '../shared/ipc.js';

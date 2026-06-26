@@ -1,9 +1,9 @@
 /**
  * SDK-owned IPC channel names — the single source of truth.
  *
- * Both the preload bridge and the main-process handlers (added in Phase 2)
- * import these constants, so channel names are never duplicated behind a
- * fragile "these must match" comment as they were in the hand-wired example.
+ * Both the preload bridge and the main-process handlers import these constants,
+ * so channel names are never duplicated behind a fragile "these must match"
+ * comment as they were in the hand-wired example.
  *
  * The `authkit:` prefix namespaces our channels to avoid collisions with a
  * consumer's own IPC traffic.
@@ -21,6 +21,8 @@ export const IPC_CHANNELS = {
   switchToOrganization: 'authkit:switch-organization',
   /** Main -> renderer: broadcast that the auth state changed. */
   authChanged: 'authkit:auth-changed',
+  /** Main -> renderer: broadcast that a sign-in / callback attempt failed. */
+  authError: 'authkit:auth-error',
 } as const;
 
 /** Union of every SDK-owned IPC channel name. */

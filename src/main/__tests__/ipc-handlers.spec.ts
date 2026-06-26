@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../shared/ipc-channels.js';
 import type { AuthResult } from '../../shared/types.js';
 import type { BrowserWindowsLike, IpcMainLike } from '../ipc-handlers.js';
-import { broadcastAuthChange, registerIpcHandlers } from '../ipc-handlers.js';
+import { broadcastAuthChange, broadcastAuthError, registerIpcHandlers } from '../ipc-handlers.js';
 import type { SessionManager } from '../session-manager.js';
 
 // Top-level import pulls `ipcMain`/`BrowserWindow` from electron; tests inject
@@ -207,6 +207,22 @@ describe('broadcastAuthChange', () => {
 
     expect(live.webContents.send).toHaveBeenCalledWith(IPC_CHANNELS.authChanged, {
       user: null,
+    });
+    expect(dead.webContents.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('broadcastAuthError', () => {
+  it('sends a safe error payload on the auth-error channel to every live window', () => {
+    const live = { webContents: { isDestroyed: () => false, send: vi.fn() } };
+    const dead = { webContents: { isDestroyed: () => true, send: vi.fn() } };
+    const bw: BrowserWindowsLike = { getAllWindows: () => [live, dead] };
+
+    broadcastAuthError({ code: 'access_denied', message: 'nope' }, { browserWindow: bw });
+
+    expect(live.webContents.send).toHaveBeenCalledWith(IPC_CHANNELS.authError, {
+      code: 'access_denied',
+      message: 'nope',
     });
     expect(dead.webContents.send).not.toHaveBeenCalled();
   });

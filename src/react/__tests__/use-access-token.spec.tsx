@@ -61,6 +61,7 @@ function makeBridge(getAccessToken: GetAccessTokenMock): BridgeHandle {
         listeners.delete(cb);
       };
     }),
+    onAuthError: vi.fn(() => () => {}),
   };
   return {
     bridge,

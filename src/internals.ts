@@ -32,8 +32,12 @@ export type { Ceremony, CreateCeremonyOptions, ShellLike } from './main/ceremony
 export { parseCallback, registerProtocol, wireDeepLinks } from './main/deep-link.js';
 export type { AppLike, ProcessLike, WireDeepLinksOptions } from './main/deep-link.js';
 
-// IPC handlers + auth-change broadcast.
-export { broadcastAuthChange, registerIpcHandlers } from './main/ipc-handlers.js';
+// IPC handlers + auth-change / auth-error broadcast.
+export {
+  broadcastAuthChange,
+  broadcastAuthError,
+  registerIpcHandlers,
+} from './main/ipc-handlers.js';
 export type {
   BroadcastOptions,
   BrowserWindowsLike,

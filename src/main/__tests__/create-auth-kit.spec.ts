@@ -278,13 +278,14 @@ describe('createAuthKit — wiring', () => {
     expect(JSON.stringify(payload)).not.toContain('refresh_SECRET');
   });
 
-  it('swallows a callback with an unknown state (no broadcast, no crash)', async () => {
+  it('a callback with an unknown state surfaces an auth-error, not an auth-change', async () => {
     const app = makeApp();
     const sendSpy = vi.fn();
+    const authenticateWithCode = vi.fn();
     const kit = createAuthKit(config, {
       storage: makeStorage(),
       client: {
-        userManagement: { authenticateWithCode: vi.fn() },
+        userManagement: { authenticateWithCode },
       } as unknown as WorkOS,
       ipcMain: makeIpcMain(),
       app,
@@ -299,10 +300,16 @@ describe('createAuthKit — wiring', () => {
     listener({ preventDefault: () => {} }, 'workos-auth://callback?code=c&state=unknown');
     await flushAsync();
 
-    expect(sendSpy).not.toHaveBeenCalled();
+    // State verification fails before the network, so the code is never
+    // exchanged and no signed-in payload is broadcast — but the renderer is told
+    // the attempt failed via a safe auth-error (no crash).
+    expect(authenticateWithCode).not.toHaveBeenCalled();
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [channel] = sendSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(channel).toBe(IPC_CHANNELS.authError);
   });
 
-  it('ignores a callback URL carrying an error param (no throw, no broadcast)', async () => {
+  it('broadcasts an auth-error (not an auth-change) for a callback error param', async () => {
     const app = makeApp();
     const sendSpy = vi.fn();
     const kit = createAuthKit(config, {
@@ -318,10 +325,94 @@ describe('createAuthKit — wiring', () => {
     kit.registerProtocol();
 
     const listener = app.listeners['open-url'] as (e: unknown, url: string) => void;
-    listener({ preventDefault: () => {} }, 'workos-auth://callback?error=access_denied');
+    listener(
+      { preventDefault: () => {} },
+      'workos-auth://callback?error=access_denied&error_description=User+said+no',
+    );
     await flushAsync();
 
-    expect(sendSpy).not.toHaveBeenCalled();
+    // No code to exchange → no auth-change broadcast, but the renderer learns of
+    // the failure via a safe auth-error payload (code + message, no tokens).
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [channel, payload] = sendSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(channel).toBe(IPC_CHANNELS.authError);
+    expect(payload).toEqual({ code: 'access_denied', message: 'User said no' });
+  });
+
+  it('broadcasts an auth-error when the code exchange fails', async () => {
+    const app = makeApp();
+    const ipc = makeIpcMain();
+    const sendSpy = vi.fn();
+
+    let openedUrl = '';
+    const ceremony: Ceremony = {
+      open: vi.fn(async (url: string) => {
+        openedUrl = url;
+      }),
+      endSession: vi.fn(async () => {}),
+      onCallback: () => () => {},
+    };
+
+    const client = createWorkOS({ clientId: 'client_test' }) as unknown as WorkOS;
+    // `authenticateWithCode` lives on the shared prototype, so spy with a *once*
+    // rejection and restore afterwards to avoid leaking into sibling specs.
+    const spy = vi
+      .spyOn(client.userManagement, 'authenticateWithCode')
+      .mockRejectedValueOnce(
+        Object.assign(new Error('code already used'), { name: 'OAuthException' }),
+      );
+
+    const kit = createAuthKit(config, {
+      storage: makeStorage(),
+      client,
+      ceremony,
+      ipcMain: ipc,
+      app,
+      browserWindow: {
+        getAllWindows: () => [{ webContents: { isDestroyed: () => false, send: sendSpy } }],
+      },
+      process: { argv: ['electron'], execPath: '/e' },
+    });
+    kit.registerProtocol();
+
+    await (ipc.handlers.get(IPC_CHANNELS.signIn) as (...a: unknown[]) => Promise<unknown>)(
+      {},
+      undefined,
+    );
+    const state = new URL(openedUrl).searchParams.get('state');
+
+    const listener = app.listeners['open-url'] as (e: unknown, url: string) => void;
+    listener(
+      { preventDefault: () => {} },
+      `workos-auth://callback?code=auth_code&state=${encodeURIComponent(state as string)}`,
+    );
+    await flushAsync();
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [channel, payload] = sendSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(channel).toBe(IPC_CHANNELS.authError);
+    expect(payload).toEqual({ code: 'OAuthException', message: 'code already used' });
+
+    spy.mockRestore();
+  });
+
+  it('registerProtocol is idempotent — repeated calls do not re-wire listeners', () => {
+    const app = makeApp();
+    const kit = createAuthKit(config, {
+      storage: makeStorage(),
+      client: { userManagement: {} } as unknown as WorkOS,
+      ipcMain: makeIpcMain(),
+      app,
+      process: { argv: ['electron'], execPath: '/e' },
+    });
+
+    kit.registerProtocol();
+    kit.registerProtocol();
+    kit.registerProtocol();
+
+    // setAsDefaultProtocolClient + the single deep-link wiring happen exactly
+    // once, so duplicate open-url/second-instance listeners can't leak.
+    expect(app.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1);
   });
 
   it('cleanup removes handlers without throwing', () => {

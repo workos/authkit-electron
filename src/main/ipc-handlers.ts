@@ -5,8 +5,8 @@
  * session manager. Two load-bearing properties:
  *
  * 1. **No refresh token crosses IPC.** Every renderer-facing auth payload is
- *    built by `toRendererAuthPayload` (Phase 1), which strips `refreshToken`
- *    via an explicit allowlist. This module never hand-builds a payload.
+ *    built by `toRendererAuthPayload`, which strips `refreshToken` via an
+ *    explicit allowlist. This module never hand-builds a payload.
  * 2. **Errors never throw across `invoke`.** `ipcRenderer.invoke` flattens a
  *    rejected handler into an opaque rejection, so we return a discriminated
  *    `IpcResult` (`{ ok: true, data } | { ok: false, error }`) instead — the
@@ -16,7 +16,11 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels.js';
 import type { IpcResult } from '../shared/ipc.js';
-import { type RendererAuthPayload, toRendererAuthPayload } from '../shared/types.js';
+import {
+  type AuthErrorPayload,
+  type RendererAuthPayload,
+  toRendererAuthPayload,
+} from '../shared/types.js';
 import type { SessionManager } from './session-manager.js';
 
 /** Minimal `ipcMain` surface (injectable for tests). */
@@ -139,6 +143,18 @@ export interface BroadcastOptions {
   browserWindow?: BrowserWindowsLike;
 }
 
+/** Send `payload` on `channel` to every live window, skipping destroyed ones. */
+function sendToAllWindows(channel: string, payload: unknown, opts: BroadcastOptions): void {
+  const bw: BrowserWindowsLike =
+    opts.browserWindow ?? (BrowserWindow as unknown as BrowserWindowsLike);
+  for (const win of bw.getAllWindows()) {
+    const wc = win.webContents;
+    if (!wc.isDestroyed()) {
+      wc.send(channel, payload);
+    }
+  }
+}
+
 /**
  * Broadcast an auth-change payload to every open window's renderer.
  *
@@ -150,12 +166,17 @@ export function broadcastAuthChange(
   payload: RendererAuthPayload,
   opts: BroadcastOptions = {},
 ): void {
-  const bw: BrowserWindowsLike =
-    opts.browserWindow ?? (BrowserWindow as unknown as BrowserWindowsLike);
-  for (const win of bw.getAllWindows()) {
-    const wc = win.webContents;
-    if (!wc.isDestroyed()) {
-      wc.send(IPC_CHANNELS.authChanged, payload);
-    }
-  }
+  sendToAllWindows(IPC_CHANNELS.authChanged, payload, opts);
+}
+
+/**
+ * Broadcast an auth-error payload to every open window's renderer.
+ *
+ * Used when a sign-in ceremony returns a provider error, is cancelled, or the
+ * code/token exchange fails — so the renderer can surface the failure instead
+ * of silently staying signed out. The payload carries only a safe `code` +
+ * `message`; it never contains tokens.
+ */
+export function broadcastAuthError(error: AuthErrorPayload, opts: BroadcastOptions = {}): void {
+  sendToAllWindows(IPC_CHANNELS.authError, error, opts);
 }

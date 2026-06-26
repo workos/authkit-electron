@@ -7,11 +7,11 @@
  * `redirectUri` — `preventDefault()`-ing it BEFORE it escapes to the OS and
  * re-triggers the custom-protocol deep-link handler (the double-handle hazard).
  *
- * Everything after capture reuses the Phase 2 orchestration unchanged: the
+ * Everything after capture reuses the shared orchestration unchanged: the
  * captured callback URL is pushed to the `Ceremony.onCallback` subscribers,
  * which `createAuthKit` wires to the same `completeCallback` path the
- * deep-link handler uses. This phase only swaps HOW the URL is opened and HOW
- * `code`/`state` are intercepted.
+ * deep-link handler uses. This ceremony only swaps HOW the URL is opened and
+ * HOW `code`/`state` are intercepted.
  *
  * Because the hosted AuthKit page loads at a real `https://` origin inside the
  * window, WebAuthn/passkeys work without any native module. The one caveat:
@@ -145,8 +145,9 @@ export function createWindowCeremony(opts: CreateWindowCeremonyOptions): Ceremon
 
       // User closed the window before completing: surface a cancellation
       // through the SAME callback path (a synthetic `error` URL) so the
-      // renderer's `signIn` promise settles instead of hanging. The Phase 2
-      // orchestrator already treats an `error` param as a non-fatal denial.
+      // renderer learns the attempt ended instead of hanging. The orchestrator
+      // treats an `error` param as a non-fatal denial and broadcasts an
+      // auth-error the renderer can observe.
       win.on('closed', () => {
         if (!captured) {
           emit(`${redirectUri}?error=window_closed`);
@@ -156,8 +157,12 @@ export function createWindowCeremony(opts: CreateWindowCeremonyOptions): Ceremon
       try {
         await win.loadURL(url);
       } catch (err) {
-        // Failed to load the authorization page — close the window (finally, to
-        // avoid a leak) and surface a cancellation so `signIn` settles.
+        // Failed to load the authorization page. The thrown error is the single
+        // failure signal here (it rejects `open()` → the sign-in IPC call), so
+        // mark `captured` BEFORE closing to stop the `closed` handler from ALSO
+        // emitting a synthetic `window_closed` callback — otherwise the failure
+        // would be reported twice.
+        captured = true;
         closeWindow();
         throw err;
       }

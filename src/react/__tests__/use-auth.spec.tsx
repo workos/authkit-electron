@@ -13,7 +13,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthKitBridge } from '../../preload/index.js';
 import type { IpcResult } from '../../shared/ipc.js';
-import type { RendererAuthPayload, User } from '../../shared/types.js';
+import type { AuthErrorPayload, RendererAuthPayload, User } from '../../shared/types.js';
 import { AuthKitProvider } from '../auth-kit-provider.js';
 import { AUTHKIT_BRIDGE_KEY } from '../../preload/index.js';
 import { useAuth } from '../use-auth.js';
@@ -36,13 +36,18 @@ function signedInPayload(overrides: Partial<RendererAuthPayload> = {}): Renderer
   } as RendererAuthPayload;
 }
 
-/** A controllable mock bridge. `emit` fires a main→renderer auth-change push. */
+/**
+ * A controllable mock bridge. `emit` fires a main→renderer auth-change push;
+ * `emitError` fires an auth-error push.
+ */
 function makeBridge(getUserResult: IpcResult<RendererAuthPayload>): {
   bridge: AuthKitBridge;
   emit: (p: RendererAuthPayload) => void;
+  emitError: (e: AuthErrorPayload) => void;
   unsubscribe: ReturnType<typeof vi.fn>;
 } {
   const listeners = new Set<(p: RendererAuthPayload) => void>();
+  const errorListeners = new Set<(e: AuthErrorPayload) => void>();
   const unsubscribe = vi.fn(() => {});
   const bridge: AuthKitBridge = {
     signIn: vi.fn(async () => ({ ok: true as const, data: null })),
@@ -57,12 +62,23 @@ function makeBridge(getUserResult: IpcResult<RendererAuthPayload>): {
         unsubscribe();
       };
     }),
+    onAuthError: vi.fn((cb: (e: AuthErrorPayload) => void) => {
+      errorListeners.add(cb);
+      return () => {
+        errorListeners.delete(cb);
+      };
+    }),
   };
   return {
     bridge,
     emit: (p) => {
       for (const cb of listeners) {
         cb(p);
+      }
+    },
+    emitError: (e) => {
+      for (const cb of errorListeners) {
+        cb(e);
       }
     },
     unsubscribe,
@@ -79,13 +95,14 @@ function installBridge(bridge: AuthKitBridge | undefined): void {
 
 /** A consumer that renders the current auth snapshot for assertions. */
 function AuthProbe(): React.JSX.Element {
-  const { user, isLoading, organizationId, role } = useAuth();
+  const { user, isLoading, organizationId, role, error } = useAuth();
   return (
     <div>
       <span data-testid="loading">{String(isLoading)}</span>
       <span data-testid="user">{user ? user.email : 'none'}</span>
       <span data-testid="org">{organizationId ?? 'none'}</span>
       <span data-testid="role">{role ?? 'none'}</span>
+      <span data-testid="error">{error ? `${error.code}:${error.message}` : 'none'}</span>
     </div>
   );
 }
@@ -176,6 +193,32 @@ describe('AuthKitProvider + useAuth', () => {
 
     act(() => emit(signedInPayload({ organizationId: 'org_2' } as Partial<RendererAuthPayload>)));
     await waitFor(() => expect(screen.getByTestId('org').textContent).toBe('org_2'));
+    expect(screen.getByTestId('user').textContent).toBe('ada@example.com');
+  });
+
+  it('surfaces an onAuthError push as `error`, and clears it on the next sign-in', async () => {
+    const { bridge, emit, emitError } = makeBridge({ ok: true, data: { user: null } });
+    installBridge(bridge);
+
+    render(
+      <AuthKitProvider>
+        <AuthProbe />
+      </AuthKitProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+    expect(screen.getByTestId('error').textContent).toBe('none');
+
+    // A sign-in failure pushes an auth-error → surfaced via `error`.
+    act(() => emitError({ code: 'access_denied', message: 'User said no' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('error').textContent).toBe('access_denied:User said no'),
+    );
+    expect(screen.getByTestId('user').textContent).toBe('none');
+
+    // A subsequent successful sign-in clears the stale error.
+    act(() => emit(signedInPayload()));
+    await waitFor(() => expect(screen.getByTestId('error').textContent).toBe('none'));
     expect(screen.getByTestId('user').textContent).toBe('ada@example.com');
   });
 
