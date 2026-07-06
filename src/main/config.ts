@@ -45,6 +45,27 @@ export function createPublicWorkOS(clientId: string): WorkOS {
 }
 
 /**
+ * Assert the consumer passed a usable WorkOS Client ID.
+ *
+ * The #1 integration failure is a misnamed env var (`clientId: process.env.X`
+ * where `X` is undefined), which without this check only surfaces once the
+ * browser opens a broken authorization URL. Fail at construction instead,
+ * with the expected `client_...` shape named in the message.
+ *
+ * @throws {Error} if `clientId` is not a non-blank string.
+ */
+export function assertValidClientId(clientId: unknown): asserts clientId is string {
+  if (typeof clientId !== 'string' || clientId.trim() === '') {
+    throw new Error(
+      `clientId is required — pass your WorkOS Client ID (it looks like ` +
+        `"client_...", found in the WorkOS Dashboard). Received ${JSON.stringify(clientId)}. ` +
+        `If you read it from an environment variable, make sure that variable is ` +
+        `actually defined in the main process.`,
+    );
+  }
+}
+
+/**
  * Assert a cookie password meets the core's minimum length.
  *
  * @throws {Error} if shorter than {@link MIN_COOKIE_PASSWORD_LENGTH}.

@@ -16,7 +16,7 @@
 import { type WorkOS } from '@workos-inc/node';
 import { AuthKitCore, AuthOperations, sessionEncryption } from '@workos/authkit-session';
 import { type Ceremony, type CreateCeremonyOptions, createCeremony } from './ceremony/index.js';
-import { createPublicWorkOS, toAuthKitConfig } from './config.js';
+import { assertValidClientId, createPublicWorkOS, toAuthKitConfig } from './config.js';
 import {
   type AppLike,
   registerProtocol as registerProtocolImpl,
@@ -79,6 +79,10 @@ export function createAuthKit(
   config: AuthKitElectronConfig,
   opts: CreateAuthKitOptions = {},
 ): CreateAuthKitResult {
+  // Fail fast, before any storage/client assembly, so a misconfigured clientId
+  // surfaces at startup rather than as a broken authorization URL at sign-in.
+  assertValidClientId(config.clientId);
+
   const storage: TokenStorage = opts.storage ?? config.storage ?? createDefaultStorage();
 
   // Resolve the sealing secret lazily so createAuthKit() can be called before

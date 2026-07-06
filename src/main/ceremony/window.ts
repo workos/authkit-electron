@@ -45,6 +45,8 @@ export interface BrowserWindowLike {
 export type BrowserWindowFactory = (opts: {
   parent?: BrowserWindowLike;
   modal: boolean;
+  /** Never shown — used for the sign-out navigation, which needs no UI. */
+  hidden?: boolean;
 }) => BrowserWindowLike;
 
 export interface CreateWindowCeremonyOptions {
@@ -69,10 +71,11 @@ export function isCallbackNavigation(url: string, redirectUri: string): boolean 
   return url.startsWith(redirectUri);
 }
 
-const defaultCreateWindow: BrowserWindowFactory = ({ parent, modal }) =>
+const defaultCreateWindow: BrowserWindowFactory = ({ parent, modal, hidden }) =>
   new ElectronBrowserWindow({
     parent: parent as unknown as ElectronBrowserWindow | undefined,
     modal,
+    show: !hidden,
     width: 480,
     height: 720,
     autoHideMenuBar: true,
@@ -157,6 +160,20 @@ export function createWindowCeremony(opts: CreateWindowCeremonyOptions): Ceremon
         // avoid a leak) and surface a cancellation so `signIn` settles.
         closeWindow();
         throw err;
+      }
+    },
+    // The hosted session's cookie lives in this ceremony's Electron session
+    // (the auth window uses the default session), so ending it means loading
+    // the logout URL there. A hidden window keeps the navigation invisible;
+    // `loadURL` resolves only after the logout redirect chain completes.
+    async endSession(logoutUrl: string): Promise<void> {
+      const win = createWindow({ parent: undefined, modal: false, hidden: true });
+      try {
+        await win.loadURL(logoutUrl);
+      } finally {
+        if (!win.isDestroyed()) {
+          win.close();
+        }
       }
     },
     onCallback(cb: (url: string) => void): () => void {

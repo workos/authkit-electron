@@ -26,6 +26,14 @@ export interface Ceremony {
   /** Take the user to the authorization URL to begin authentication. */
   open(url: string): Promise<void>;
   /**
+   * End the hosted AuthKit session by delivering the WorkOS logout URL to
+   * wherever that session's cookie lives: the OS browser (system-browser mode)
+   * or the ceremony window's Electron session (window mode). Without this,
+   * "sign out" only clears the app-local session and the next sign-in silently
+   * re-authenticates against the still-live hosted session.
+   */
+  endSession(logoutUrl: string): Promise<void>;
+  /**
    * Register a callback for ceremonies that capture their own callback URL
    * (window mode). Returns an unsubscribe function. The system-browser ceremony
    * never invokes the callback (its callback arrives via the deep-link handler).

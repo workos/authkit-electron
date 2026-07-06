@@ -76,7 +76,11 @@ function makeStorage(): ReturnType<typeof createDefaultStorage> {
 }
 
 function makeCeremony(): Ceremony {
-  return { open: vi.fn(async () => {}), onCallback: () => () => {} };
+  return {
+    open: vi.fn(async () => {}),
+    endSession: vi.fn(async () => {}),
+    onCallback: () => () => {},
+  };
 }
 
 /** Drive a real sign-in to obtain the sealedState the callback will receive. */

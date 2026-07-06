@@ -34,7 +34,10 @@ export interface SessionManager {
   getUser(): Promise<AuthResult>;
   /** The short-lived access token, or null when signed out. Never the refresh token. */
   getAccessToken(): Promise<string | null>;
-  /** Build the WorkOS logout URL and clear the local session. */
+  /**
+   * Clear the local session, then end the hosted AuthKit session by handing
+   * the WorkOS logout URL to the ceremony (best-effort, not awaited).
+   */
   signOut(opts?: { returnTo?: string }): Promise<{ logoutUrl: string }>;
   /** Force-refresh into a new organization and persist the new session. */
   switchToOrganization(orgId: string): Promise<AuthResult>;
@@ -151,6 +154,22 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
     }
     storage.clearSession();
+
+    // End the hosted AuthKit session wherever its cookie lives (OS browser or
+    // ceremony window). Deliberately NOT awaited: the local sign-out (and the
+    // { user: null } broadcast behind it) must not wait on a browser launch or
+    // a hidden-window network round trip, and a failed remote logout must not
+    // block signing out locally.
+    if (logoutUrl) {
+      void ceremony.endSession(logoutUrl).catch((err: unknown) => {
+        console.warn(
+          '[authkit-electron] signOut: cleared the local session, but ending ' +
+            'the hosted AuthKit session failed (the next sign-in may silently ' +
+            'reuse it):',
+          err,
+        );
+      });
+    }
     return { logoutUrl };
   }
 

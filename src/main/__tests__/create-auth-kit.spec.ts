@@ -109,6 +109,49 @@ describe('schemeFromRedirectUri', () => {
   });
 });
 
+describe('createAuthKit — config validation', () => {
+  it('throws at construction when clientId is missing', () => {
+    expect(() =>
+      createAuthKit(
+        { clientId: undefined as unknown as string, redirectUri: 'workos-auth://callback' },
+        {
+          storage: makeStorage(),
+          client: { userManagement: {} } as unknown as WorkOS,
+          ipcMain: makeIpcMain(),
+        },
+      ),
+    ).toThrow(/clientId/);
+  });
+
+  it('throws at construction when clientId is empty or blank', () => {
+    for (const clientId of ['', '   ']) {
+      expect(() =>
+        createAuthKit(
+          { clientId, redirectUri: 'workos-auth://callback' },
+          {
+            storage: makeStorage(),
+            client: { userManagement: {} } as unknown as WorkOS,
+            ipcMain: makeIpcMain(),
+          },
+        ),
+      ).toThrow(/clientId/);
+    }
+  });
+
+  it("names the expected 'client_' shape in the error so env-var mistakes are actionable", () => {
+    expect(() =>
+      createAuthKit(
+        { clientId: undefined as unknown as string, redirectUri: 'workos-auth://callback' },
+        {
+          storage: makeStorage(),
+          client: { userManagement: {} } as unknown as WorkOS,
+          ipcMain: makeIpcMain(),
+        },
+      ),
+    ).toThrow(/client_/);
+  });
+});
+
 describe('createAuthKit — wiring', () => {
   it('registers all IPC handlers and exposes registerProtocol/cleanup', () => {
     const ipc = makeIpcMain();
@@ -176,6 +219,7 @@ describe('createAuthKit — wiring', () => {
       open: vi.fn(async (url: string) => {
         openedUrl = url;
       }),
+      endSession: vi.fn(async () => {}),
       onCallback: () => () => {},
     };
 

@@ -209,6 +209,30 @@ describe('createWindowCeremony', () => {
     expect(win.close).toHaveBeenCalledTimes(1);
   });
 
+  it('endSession loads the logout URL in a hidden window and closes it', async () => {
+    const { win, createWindow, ceremony } = setup();
+
+    await ceremony.endSession('https://api.workos.com/logout?session_id=session_1');
+
+    expect(createWindow).toHaveBeenCalledWith({ parent: undefined, modal: false, hidden: true });
+    expect(win.loadURL).toHaveBeenCalledWith('https://api.workos.com/logout?session_id=session_1');
+    expect(win.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('endSession closes the hidden window (no leak) and rethrows when loadURL fails', async () => {
+    const win = makeWindow();
+    win.loadURL.mockRejectedValueOnce(new Error('net::ERR_FAILED'));
+    const ceremony = createWindowCeremony({
+      redirectUri: REDIRECT_URI,
+      createWindow: () => win,
+    });
+
+    await expect(ceremony.endSession('https://api.workos.com/logout')).rejects.toThrow(
+      'net::ERR_FAILED',
+    );
+    expect(win.close).toHaveBeenCalledTimes(1);
+  });
+
   it('passes a parent and makes the window modal when a parent is given', async () => {
     const parent = makeWindow();
     const child = makeWindow();

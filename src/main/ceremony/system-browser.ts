@@ -21,6 +21,12 @@ export function createSystemBrowserCeremony(opts: CreateCeremonyOptions = {}): C
     async open(url: string): Promise<void> {
       await shell.openExternal(url);
     },
+    // The hosted session's cookie lives in the OS browser, so ending it means
+    // sending the browser to the logout URL (which then lands on the app's
+    // configured Logout URI).
+    async endSession(logoutUrl: string): Promise<void> {
+      await shell.openExternal(logoutUrl);
+    },
     // System-browser callbacks arrive via the deep-link handler, not here.
     onCallback(): () => void {
       return () => {};

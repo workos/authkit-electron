@@ -22,6 +22,15 @@ describe('createSystemBrowserCeremony', () => {
     expect(openExternal).toHaveBeenCalledWith('https://api.workos.com/authorize?x=1');
   });
 
+  it('endSession opens the logout URL via shell.openExternal (session lives in the OS browser)', async () => {
+    const openExternal = vi.fn(async () => {});
+    const ceremony = createSystemBrowserCeremony({ shell: { openExternal } });
+
+    await ceremony.endSession('https://api.workos.com/logout?session_id=session_1');
+
+    expect(openExternal).toHaveBeenCalledWith('https://api.workos.com/logout?session_id=session_1');
+  });
+
   it('onCallback is a no-op returning an unsubscribe (callbacks arrive via deep link)', () => {
     const ceremony = createSystemBrowserCeremony({ shell: { openExternal: vi.fn() } });
     const unsubscribe = ceremony.onCallback(() => {

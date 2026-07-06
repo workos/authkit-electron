@@ -62,7 +62,7 @@ In the [WorkOS dashboard](https://dashboard.workos.com):
 
    Desktop apps capture the OAuth callback through a custom URL scheme (not an `http://` URL), so the redirect URI must be a `scheme://path` value. The SDK derives the protocol scheme from it automatically.
 
-3. To use `signOut`, set a default **Logout URI** under **Redirects**.
+3. Still under **Redirects**, set a default **Logout URI**. `signOut` ends the hosted AuthKit session by navigating to the WorkOS logout URL, which then lands on this URI.
 
 > [!NOTE]
 > Unlike the web SDKs, this library reads its configuration from the `createAuthKit({...})` **argument**, not from environment variables. How you source your `clientId` (env var, build-time inlining, hardcoded) is up to your app. The in-repo [`example/`](./example) sources it from `MAIN_VITE_WORKOS_CLIENT_ID`.
@@ -196,7 +196,7 @@ protocols:
 
 | Option           | Type                                      | Default                      | Description                                                                                            |
 | ---------------- | ----------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `clientId`       | `string`                                  | **required**                 | Your WorkOS Client ID (`client_...`)                                                                   |
+| `clientId`       | `string`                                  | **required**                 | Your WorkOS Client ID (`client_...`). Validated at construction — a missing/blank value throws.        |
 | `redirectUri`    | `string`                                  | **required**                 | Custom-protocol redirect URI, e.g. `workos-auth://callback`. The scheme is derived from this.          |
 | `cookiePassword` | `string`                                  | per-install generated secret | Override the ≥ 32-char secret that seals in-flight PKCE state. Omit to auto-generate + keychain-store. |
 | `ceremony`       | `{ mode?: 'system-browser' \| 'window' }` | `{ mode: 'system-browser' }` | How the user is taken to AuthKit. See [Sign-in ceremonies](#sign-in-ceremonies).                       |
@@ -218,6 +218,7 @@ Opens the user's **default OS browser** (`shell.openExternal`) and returns to yo
 
 - ✅ Most secure; uses the user's real browser session and password manager.
 - ℹ️ On return, the OS shows a "**\<your-domain> wants to open \<YourApp>**" confirmation dialog. **This is expected** — it is the OS handing the `workos-auth://` callback back to your app. Users can check "Always open" to suppress it.
+- ℹ️ On `signOut`, the browser opens again briefly — the hosted AuthKit session's cookie lives there, so ending it means sending the browser to the logout URL (it lands on your configured **Logout URI**).
 
 ### `window`
 
@@ -231,7 +232,7 @@ createAuthKit({
 });
 ```
 
-Because the hosted AuthKit page loads at a real `https://` origin inside the window, WebAuthn/passkeys work without any native module.
+Because the hosted AuthKit page loads at a real `https://` origin inside the window, WebAuthn/passkeys work without any native module. Sign-out is invisible in this mode: the logout URL is loaded in a hidden window (the hosted session's cookie lives in the app's Electron session, not the OS browser).
 
 > [!NOTE]
 > Touch ID inside a `BrowserWindow` (window mode) requires Electron ≥ 42 plus `app.configureWebAuthn`. In `system-browser` mode this is a non-issue.
@@ -275,7 +276,7 @@ function Profile() {
 | `impersonator`         | `Impersonator \| undefined`                       | Present when the session is being impersonated                  |
 | `claims`               | `AuthKitClaims \| undefined`                      | The full decoded access-token claims                            |
 | `signIn`               | `(opts?: SignInOptions) => Promise<void>`         | Begin a sign-in ceremony                                        |
-| `signOut`              | `(opts?: { returnTo?: string }) => Promise<void>` | Sign out and clear the session in the main process              |
+| `signOut`              | `(opts?: { returnTo?: string }) => Promise<void>` | Clear the local session AND end the hosted AuthKit session      |
 | `switchToOrganization` | `(organizationId: string) => Promise<void>`       | Force-refresh into a different organization                     |
 | `getAccessToken`       | `() => Promise<string \| null>`                   | The current short-lived access token, or `null` when signed out |
 
@@ -365,6 +366,7 @@ Security is the reason this library exists — it removes the error-prone, secur
 - **At-rest encryption.** The session is persisted with Electron's `safeStorage` (OS keychain), not a hardcoded key. If `safeStorage` is unavailable (e.g. Linux with no keyring), the SDK **refuses to persist** and throws `EncryptionUnavailableError` rather than writing secrets in plaintext.
 - **No static secret in the binary.** The PKCE-sealing `cookiePassword` is a ≥ 32-char per-install secret generated on first run and kept in the keychain.
 - **PKCE + sealed CSRF state.** Sign-in uses PKCE with a sealed (encrypted) `state`. The sealed state is persisted main-side (not in a cookie), then verified on callback with a constant-time compare + unseal. The pending verifier is **single-use** with a 10-minute TTL, so a replayed callback cannot reuse a consumed verifier.
+- **Complete sign-out.** `signOut` clears the local session immediately, then ends the **hosted** AuthKit session by delivering the WorkOS logout URL where that session's cookie lives (the OS browser, or a hidden window in window mode) — so the next sign-in cannot silently reuse a stale hosted session. The remote step is best-effort and never blocks local sign-out.
 - **All crypto is delegated.** PKCE, JWT verification, and token refresh come from `@workos/authkit-session`; this library re-implements none of it.
 
 > [!WARNING]
@@ -412,6 +414,10 @@ For advanced composition (or to build non-React renderer bindings), the lower-le
 The package surfaces WorkOS's own types directly so you never redeclare them — `User` and `Impersonator` come from `@workos-inc/node`, and `AuthResult`, `Session`, `BaseTokenClaims`, and `CustomClaims` from `@workos/authkit-session`. The renderer-safe payload is `RendererAuthPayload`, and `AuthKitClaims<TCustomClaims>` lets you type custom claims.
 
 ## Troubleshooting
+
+#### `createAuthKit` throws `clientId is required` at startup
+
+The value you passed for `clientId` was `undefined` or blank — almost always a missing or misnamed environment variable (e.g. an unprefixed var that your bundler doesn't expose to the main process). Failing at construction is deliberate: the alternative is a broken authorization URL at first sign-in.
 
 #### `window.__authkit_electron is missing`
 

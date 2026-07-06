@@ -24,16 +24,21 @@ function makeClient(behavior: { authenticateWithCode?: ReturnType<typeof vi.fn> 
   };
 }
 
-function makeCeremony(behavior: { open?: ReturnType<typeof vi.fn> } = {}): {
+function makeCeremony(
+  behavior: { open?: ReturnType<typeof vi.fn>; endSession?: ReturnType<typeof vi.fn> } = {},
+): {
   ceremony: Ceremony;
   open: ReturnType<typeof vi.fn>;
+  endSession: ReturnType<typeof vi.fn>;
 } {
   const open = behavior.open ?? vi.fn((_url: string) => Promise.resolve());
+  const endSession = behavior.endSession ?? vi.fn((_url: string) => Promise.resolve());
   const ceremony: Ceremony = {
     open: open as Ceremony['open'],
+    endSession: endSession as Ceremony['endSession'],
     onCallback: () => () => {},
   };
-  return { ceremony, open };
+  return { ceremony, open, endSession };
 }
 
 /** The Phase 1 trio plus stub Phase 2 deps, for the legacy construction calls. */
@@ -333,6 +338,62 @@ describe('signOut', () => {
     expect(logoutUrl).toBe('');
     expect(getLogoutUrl).not.toHaveBeenCalled();
     expect(storage.clearSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends the hosted AuthKit session by handing the logout URL to the ceremony', async () => {
+    const parseTokenClaims = vi.fn(() => claims({ sid: 'session_xyz' }));
+    const { core } = makeCore({ parseTokenClaims });
+    const { operations } = makeOperations({});
+    const storage = makeStorage(session);
+    const { ceremony, endSession } = makeCeremony();
+    const manager = createSessionManager({
+      ...baseDeps(core, operations, storage),
+      ceremony,
+    });
+
+    await manager.signOut();
+
+    expect(endSession).toHaveBeenCalledTimes(1);
+    expect(endSession).toHaveBeenCalledWith(
+      'https://api.workos.com/logout?session_id=session_xyz',
+    );
+    expect(storage.clearSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invoke the ceremony when there is no session to end', async () => {
+    const { core } = makeCore({});
+    const { operations } = makeOperations({});
+    const { ceremony, endSession } = makeCeremony();
+    const manager = createSessionManager({
+      ...baseDeps(core, operations, makeStorage(null)),
+      ceremony,
+    });
+
+    await manager.signOut();
+
+    expect(endSession).not.toHaveBeenCalled();
+  });
+
+  it('local sign-out survives a failed remote logout (endSession rejection is logged, not thrown)', async () => {
+    const { core } = makeCore({});
+    const { operations } = makeOperations({});
+    const storage = makeStorage(session);
+    const endSession = vi.fn(() => Promise.reject(new Error('browser exploded')));
+    const { ceremony } = makeCeremony({ endSession });
+    const manager = createSessionManager({
+      ...baseDeps(core, operations, storage),
+      ceremony,
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { logoutUrl } = await manager.signOut();
+
+    expect(logoutUrl).toContain('session_id=');
+    expect(storage.clearSession).toHaveBeenCalledTimes(1);
+    // The rejection is handled (no unhandled rejection) and surfaced as a warning.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('still clears the session when the access token cannot be parsed', async () => {
