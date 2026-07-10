@@ -40,14 +40,15 @@ npm install @workos/authkit-electron @workos-inc/node
 
 ### Subpath exports
 
-The package ships four entry points that version in lockstep:
+The package ships five entry points that version in lockstep:
 
-| Import                               | Process  | Provides                                                                           |
-| ------------------------------------ | -------- | ---------------------------------------------------------------------------------- |
-| `@workos/authkit-electron`           | Main     | `createAuthKit`, default storage, shared types                                     |
-| `@workos/authkit-electron/preload`   | Preload  | `exposeAuthKit`, the typed bridge contract                                         |
-| `@workos/authkit-electron/react`     | Renderer | `AuthKitProvider`, `useAuth`, `useAccessToken`, `SignedIn/SignedOut`               |
-| `@workos/authkit-electron/internals` | Main     | Building blocks for advanced composition (see [Building blocks](#building-blocks)) |
+| Import                               | Process  | Provides                                                                                        |
+| ------------------------------------ | -------- | ----------------------------------------------------------------------------------------------- |
+| `@workos/authkit-electron`           | Main     | `createAuthKit`, default storage, shared types                                                  |
+| `@workos/authkit-electron/preload`   | Preload  | `exposeAuthKit`, the typed bridge contract                                                      |
+| `@workos/authkit-electron/react`     | Renderer | `AuthKitProvider`, `useAuth`, `useAccessToken`, `SignedIn/SignedOut`                            |
+| `@workos/authkit-electron/globals`   | Renderer | Types only: opt-in `Window` typing for the bridge (see [Renderer without React](#renderer-without-react)) |
+| `@workos/authkit-electron/internals` | Main     | Building blocks for advanced composition (see [Building blocks](#building-blocks))              |
 
 ## Pre-flight
 
@@ -177,6 +178,72 @@ function App() {
 
 > [!IMPORTANT]
 > `AuthKitProvider` reads `window.__authkit_electron`. If `exposeAuthKit()` was not called in the preload script (or the window has no preload), the hooks throw an actionable error. See [Troubleshooting](#troubleshooting).
+
+### Renderer without React
+
+The `/react` bindings are optional — main and preload are framework-agnostic, and the preload bridge **is** the public renderer API. Once `exposeAuthKit()` has run in your preload script, any renderer (vanilla TS, Vue, Svelte, …) drives auth through `window.__authkit_electron`.
+
+For typed access, opt into the ambient `Window` augmentation from any `.d.ts` in your renderer source (electron-vite scaffolds already have an `env.d.ts` for exactly this):
+
+```ts
+/// <reference types="@workos/authkit-electron/globals" />
+```
+
+(Equivalent: add `"@workos/authkit-electron/globals"` to `compilerOptions.types` in your renderer tsconfig.)
+
+The typing marks the bridge **optional** because it is genuinely absent when the preload didn't run — the same misconfiguration the React hooks throw for. Guard once and reuse:
+
+```ts
+// renderer/authkit.ts
+import type { AuthKitBridge } from '@workos/authkit-electron/preload';
+
+export function authkit(): AuthKitBridge {
+  const bridge = window.__authkit_electron;
+  if (!bridge) {
+    throw new Error(
+      '[authkit-electron] window.__authkit_electron is missing. Did you call ' +
+        'exposeAuthKit() in your preload script (and point your BrowserWindow at it)?',
+    );
+  }
+  return bridge;
+}
+```
+
+(The `import type` is erased at compile time — no preload code is bundled into your renderer.)
+
+```ts
+// renderer/main.ts
+import { authkit } from './authkit';
+
+const bridge = authkit(); // the guard runs once, at startup
+
+const status = document.getElementById('status')!;
+
+function render(user: { email: string } | null): void {
+  status.textContent = user ? `Signed in as ${user.email}` : 'Signed out';
+}
+
+async function init(): Promise<void> {
+  // Every renderer→main call resolves to an IpcResult<T> — branch on `ok`
+  // rather than try/catch, and read the stable `error.code` on failure.
+  const result = await bridge.getUser();
+  if (!result.ok) {
+    status.textContent = `Auth error: ${result.error.code}`;
+    return;
+  }
+  render(result.data.user);
+}
+void init();
+
+// Stay in sync: sign-in, sign-out, and org switches in ANY window arrive here.
+// (onAuthChange returns an unsubscribe function — keep it if this UI can be torn down.)
+bridge.onAuthChange((payload) => render(payload.user));
+
+document.getElementById('sign-in')!.addEventListener('click', () => void bridge.signIn());
+document.getElementById('sign-out')!.addEventListener('click', () => void bridge.signOut());
+```
+
+`onAuthChange` delivers the same `RendererAuthPayload` the React hooks consume (`user`, `organizationId`, `role`, `permissions`, `claims`, …), so everything in [`useAuth()`](#useauth) maps 1:1 onto bridge calls. To build richer bindings (a Vue composable, a Svelte store), wrap the same six bridge methods — that is all `AuthKitProvider` does.
 
 ### Packaged apps: register the protocol with your bundler
 
@@ -412,6 +479,8 @@ For advanced composition (or to build non-React renderer bindings), the lower-le
 ### Types
 
 The package surfaces WorkOS's own types directly so you never redeclare them — `User` and `Impersonator` come from `@workos-inc/node`, and `AuthResult`, `Session`, `BaseTokenClaims`, and `CustomClaims` from `@workos/authkit-session`. The renderer-safe payload is `RendererAuthPayload`, and `AuthKitClaims<TCustomClaims>` lets you type custom claims.
+
+The bridge contract (`AuthKitBridge`, `IpcResult`, `SignInOptions`) is exported from `/preload`, and `@workos/authkit-electron/globals` is a types-only entry that augments `Window` with the optional `__authkit_electron` bridge for non-React renderers — see [Renderer without React](#renderer-without-react).
 
 ## Troubleshooting
 

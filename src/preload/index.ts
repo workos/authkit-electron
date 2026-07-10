@@ -22,7 +22,14 @@ import type { RendererAuthPayload } from '../shared/types.js';
 // consumers (and the renderer typings) keep importing it from the preload entry.
 export type { AuthKitBridge, IpcResult, SignInOptions } from '../shared/ipc.js';
 
-/** The global key the bridge is exposed under in the renderer. */
+/**
+ * The global key the bridge is exposed under in the renderer.
+ *
+ * This literal is restated where a value import is impossible or unwanted:
+ * the ambient typing in globals.d.ts (types-only, must not import this
+ * electron-loading module) and the renderer-side cast in src/react/context.ts.
+ * If this key ever changes, update those two and the README/TUTORIAL samples.
+ */
 export const AUTHKIT_BRIDGE_KEY = '__authkit_electron';
 
 /** Build the bridge object (pure — no Electron globals touched at call time). */
