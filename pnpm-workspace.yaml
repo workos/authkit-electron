@@ -1,3 +1,7 @@
 packages:
   - '.'
   - example/
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
