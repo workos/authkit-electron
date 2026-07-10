@@ -200,10 +200,7 @@ import type { AuthKitBridge } from '@workos/authkit-electron/preload';
 export function authkit(): AuthKitBridge {
   const bridge = window.__authkit_electron;
   if (!bridge) {
-    throw new Error(
-      '[authkit-electron] window.__authkit_electron is missing. Did you call ' +
-        'exposeAuthKit() in your preload script (and point your BrowserWindow at it)?',
-    );
+    throw new Error('[authkit-electron] bridge missing — did the preload call exposeAuthKit()?');
   }
   return bridge;
 }
@@ -480,7 +477,7 @@ For advanced composition (or to build non-React renderer bindings), the lower-le
 
 The package surfaces WorkOS's own types directly so you never redeclare them — `User` and `Impersonator` come from `@workos-inc/node`, and `AuthResult`, `Session`, `BaseTokenClaims`, and `CustomClaims` from `@workos/authkit-session`. The renderer-safe payload is `RendererAuthPayload`, and `AuthKitClaims<TCustomClaims>` lets you type custom claims.
 
-The bridge contract (`AuthKitBridge`, `IpcResult`, `SignInOptions`) is exported from `/preload`, and `@workos/authkit-electron/globals` is a types-only entry that augments `Window` with the optional `__authkit_electron` bridge for non-React renderers — see [Renderer without React](#renderer-without-react).
+The bridge contract (`AuthKitBridge`, `IpcResult`, `SignInOptions`) is exported from `/preload`.
 
 ## Troubleshooting
 

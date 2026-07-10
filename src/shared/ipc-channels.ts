@@ -25,3 +25,11 @@ export const IPC_CHANNELS = {
 
 /** Union of every SDK-owned IPC channel name. */
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
+
+/**
+ * The `window` global the bridge is exposed under by `exposeAuthKit()`.
+ *
+ * Lives here (not in the preload module) so renderer code and the types-only
+ * globals.d.ts can derive the key without importing anything electron-loading.
+ */
+export const AUTHKIT_BRIDGE_KEY = '__authkit_electron';

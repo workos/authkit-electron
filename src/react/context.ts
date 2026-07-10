@@ -15,6 +15,7 @@
  */
 
 import { createContext, useContext } from 'react';
+import { AUTHKIT_BRIDGE_KEY } from '../shared/ipc-channels.js';
 import type { AuthKitBridge, SignInOptions } from '../shared/ipc.js';
 import type { AuthKitClaims, Impersonator, User } from '../shared/types.js';
 
@@ -68,10 +69,12 @@ AuthKitContext.displayName = 'AuthKitContext';
  * preload did not load for this window.
  */
 export function useBridge(): AuthKitBridge {
-  const bridge = (globalThis as { __authkit_electron?: AuthKitBridge }).__authkit_electron;
+  const bridge = (globalThis as Partial<Record<typeof AUTHKIT_BRIDGE_KEY, AuthKitBridge>>)[
+    AUTHKIT_BRIDGE_KEY
+  ];
   if (!bridge) {
     throw new Error(
-      '[authkit-electron] window.__authkit_electron is missing. Did you call ' +
+      `[authkit-electron] window.${AUTHKIT_BRIDGE_KEY} is missing. Did you call ` +
         'exposeAuthKit() in your preload script (and point your BrowserWindow at it)?',
     );
   }

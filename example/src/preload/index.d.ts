@@ -1,9 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload';
 
-// The SDK owns the bridge shape AND its Window typing: `exposeAuthKit()` mounts
-// `window.__authkit_electron`, typed via the ambient reference in
-// src/renderer/src/env.d.ts (`@workos/authkit-electron/globals`) — the example
-// no longer redeclares the property here.
+// `window.__authkit_electron` is typed by the renderer's env.d.ts reference to
+// `@workos/authkit-electron/globals`; only the example's own globals live here.
 declare global {
   interface Window {
     electron: ElectronAPI;

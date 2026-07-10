@@ -1,26 +1,17 @@
 /**
- * Opt-in ambient `Window` typing for the preload bridge — types only, no runtime.
- *
- * The runtime global is created by `exposeAuthKit()` (from
- * `@workos/authkit-electron/preload`); this file only teaches TypeScript about
- * it. Opt in from renderer code with either a triple-slash reference:
- *
- *   /// <reference types="@workos/authkit-electron/globals" />
- *
- * or the renderer tsconfig:
- *
- *   { "compilerOptions": { "types": ["@workos/authkit-electron/globals"] } }
- *
- * The property is optional on purpose: the bridge is genuinely absent when the
- * preload script didn't run (the most common misconfiguration — see
- * Troubleshooting in the README), so the type system asks for one guard at the
- * first use site instead of allowing a runtime surprise later.
+ * Opt-in ambient `Window` typing for the bridge `exposeAuthKit()` creates —
+ * types only, no runtime. Opt in from renderer code with
+ * `/// <reference types="@workos/authkit-electron/globals" />` (or tsconfig
+ * `compilerOptions.types`). The property is optional because the bridge is
+ * genuinely absent when the preload script didn't run — guard the first use.
+ * See "Renderer without React" in the README.
  */
 
-import type { AuthKitBridge } from './dist/preload/index.js';
+import { AUTHKIT_BRIDGE_KEY } from './dist/shared/ipc-channels.js';
+import type { AuthKitBridge } from './dist/shared/ipc.js';
 
 declare global {
   interface Window {
-    readonly __authkit_electron?: AuthKitBridge;
+    readonly [AUTHKIT_BRIDGE_KEY]?: AuthKitBridge;
   }
 }
