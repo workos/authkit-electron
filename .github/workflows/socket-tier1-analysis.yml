@@ -16,6 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   socket-vulnerability-analysis:
     runs-on: ubuntu-latest
@@ -23,12 +26,16 @@ jobs:
 
     steps:
       - name: Check distinct_id
+        env:
+          DISTINCT_ID: ${{ github.event.inputs.distinct_id }}
         run: |
-          echo "distinct_id: ${{ github.event.inputs.distinct_id }}"
+          echo "distinct_id: $DISTINCT_ID"
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Install Socket CLI
-        run: npm install -g socket
+        # Pinned so a compromised release can't run arbitrary code next to
+        # SOCKET_SECURITY_API_TOKEN; bump deliberately.
+        run: npm install -g socket@1.1.145
       - name: Run Tier 1 reachability scan
         env:
           SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_API_KEY }}
