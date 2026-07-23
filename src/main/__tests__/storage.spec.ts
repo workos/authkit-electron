@@ -316,12 +316,23 @@ describe('createDefaultStorage — read-path plaintext policy (SEC-1592)', () =>
     expect(storage.takePendingVerifier('attacker-state')).toBeNull();
   });
 
-  it('still honors plain: values when allowPlaintext is enabled', () => {
+  it('still honors plain: values when allowPlaintext is enabled (encryption unavailable)', () => {
     const store = makeStore();
     store.raw.set('session', `plain:${JSON.stringify(session)}`);
     const storage = createDefaultStorage({
       store,
       safeStorage: makeSafeStorage(false),
+      allowPlaintext: true,
+    });
+    expect(storage.getSession()).toEqual(session);
+  });
+
+  it('still honors plain: values when allowPlaintext is enabled (encryption available)', () => {
+    const store = makeStore();
+    store.raw.set('session', `plain:${JSON.stringify(session)}`);
+    const storage = createDefaultStorage({
+      store,
+      safeStorage: makeSafeStorage(true),
       allowPlaintext: true,
     });
     expect(storage.getSession()).toEqual(session);
