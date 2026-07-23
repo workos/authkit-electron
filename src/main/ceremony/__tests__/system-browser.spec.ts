@@ -49,7 +49,7 @@ describe('createCeremony', () => {
     expect(openExternal).toHaveBeenCalledWith('https://example.com');
   });
 
-  it('selects the window ceremony when window mode is requested (Phase 4)', async () => {
+  it('selects the window ceremony when window mode is requested', async () => {
     const openExternal = vi.fn(async () => {});
     const createWindow = vi.fn(() => ({
       webContents: { on: vi.fn() },

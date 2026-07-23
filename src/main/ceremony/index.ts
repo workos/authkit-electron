@@ -1,17 +1,17 @@
 /**
  * Sign-in ceremony abstraction.
  *
- * A "ceremony" is how the user is taken to AuthKit to authenticate. Phase 2
- * ships the default `system-browser` ceremony (opens the OS browser via
- * `shell.openExternal`); the in-app `window` ceremony arrives in Phase 4. Both
- * deliver their callback through the same deep-link handler, so the `Ceremony`
- * interface only needs to know how to `open` an authorization URL.
+ * A "ceremony" is how the user is taken to AuthKit to authenticate. Two modes
+ * ship: the default `system-browser` ceremony (opens the OS browser via
+ * `shell.openExternal`) and the in-app `window` ceremony. Both deliver their
+ * callback through the same completion path, so the `Ceremony` interface only
+ * needs to know how to `open` an authorization URL.
  *
- * `onCallback` lets a ceremony that captures its own callback (the future
- * window mode, via navigation interception) push the callback URL back to the
- * orchestrator. The system-browser ceremony does NOT use it — its callbacks
- * arrive out-of-band through the custom-protocol deep link — so the default
- * implementation is a no-op that returns an unsubscribe.
+ * `onCallback` lets a ceremony that captures its own callback (window mode, via
+ * navigation interception) push the callback URL back to the orchestrator. The
+ * system-browser ceremony does NOT use it — its callbacks arrive out-of-band
+ * through the custom-protocol deep link — so the default implementation is a
+ * no-op that returns an unsubscribe.
  */
 
 import type { AuthKitElectronConfig } from '../../shared/types.js';

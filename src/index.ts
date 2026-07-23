@@ -27,6 +27,7 @@ export type { IpcResult } from './shared/ipc.js';
 // never redeclare them).
 export { toRendererAuthPayload } from './shared/types.js';
 export type {
+  AuthErrorPayload,
   AuthKitClaims,
   AuthKitElectronConfig,
   AuthResult,

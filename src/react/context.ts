@@ -3,8 +3,8 @@
  *
  * Holds only renderer-safe state: the `user`, the flattened claim helpers, and
  * the short-lived access token. The refresh token has no representation here —
- * it never crosses the IPC bridge (enforced upstream by `toRendererAuthPayload`
- * in Phase 1), and this layer has no channel that would return it.
+ * it never crosses the IPC bridge (enforced upstream by `toRendererAuthPayload`),
+ * and this layer has no channel that would return it.
  *
  * The field/method names mirror the web SDK `@workos/authkit-react`
  * (`isLoading`, `user`, `role`, `roles`, `organizationId`, `permissions`,
@@ -17,7 +17,7 @@
 import { createContext, useContext } from 'react';
 import { AUTHKIT_BRIDGE_KEY } from '../shared/ipc-channels.js';
 import type { AuthKitBridge, SignInOptions } from '../shared/ipc.js';
-import type { AuthKitClaims, Impersonator, User } from '../shared/types.js';
+import type { AuthErrorPayload, AuthKitClaims, Impersonator, User } from '../shared/types.js';
 
 /**
  * The value surfaced by {@link AuthKitContext} and read by `useAuth()`.
@@ -42,6 +42,13 @@ export interface AuthKitContextValue {
   impersonator?: Impersonator;
   /** The full decoded access-token claims (Electron-specific convenience). */
   claims?: AuthKitClaims;
+
+  /**
+   * The most recent sign-in failure (a denied/cancelled ceremony or a failed
+   * code exchange), or `null` if the last attempt did not fail. Cleared the next
+   * time a sign-in succeeds. Carries a safe `code` + `message` only — never tokens.
+   */
+  error: AuthErrorPayload | null;
 
   /** Begin a sign-in ceremony in the system browser (or window). */
   signIn(opts?: SignInOptions): Promise<void>;

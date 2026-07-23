@@ -1,7 +1,7 @@
 /**
  * `createAuthKit()` — the one-call main-process assembly.
  *
- * Wires every Phase 1 + Phase 2 piece into a working auth runtime:
+ * Wires every piece into a working auth runtime:
  *
  *   storage -> cookiePassword -> AuthKitConfig -> public WorkOS client ->
  *   AuthKitCore + AuthOperations -> ceremony -> SessionManager ->
@@ -26,11 +26,13 @@ import {
   type BrowserWindowsLike,
   type IpcMainLike,
   broadcastAuthChange,
+  broadcastAuthError,
   registerIpcHandlers,
 } from './ipc-handlers.js';
 import { createSessionManager } from './session-manager.js';
 import { createDefaultStorage } from './storage.js';
 import {
+  type AuthErrorPayload,
   type AuthKitElectronConfig,
   type RendererAuthPayload,
   type TokenStorage,
@@ -41,8 +43,10 @@ export interface CreateAuthKitResult {
   /**
    * Register the app as the OS handler for the redirect-URI protocol and wire
    * the deep-link capture matrix. Call inside `app.whenReady()` (or before the
-   * first `BrowserWindow`). Returns the deep-link cleanup, also invoked by
-   * {@link CreateAuthKitResult.cleanup}.
+   * first `BrowserWindow`). Idempotent: calling it more than once is a no-op
+   * after the first call (the listeners are wired exactly once), so it never
+   * leaks duplicate `open-url`/`second-instance` handlers. The deep-link
+   * listeners are removed by {@link CreateAuthKitResult.cleanup}.
    */
   registerProtocol(): void;
   /** Remove IPC handlers and deep-link listeners. Call on app shutdown. */
@@ -121,13 +125,22 @@ export function createAuthKit(
   const broadcast = (payload: RendererAuthPayload): void =>
     broadcastAuthChange(payload, { browserWindow: opts.browserWindow });
 
+  // Companion path for sign-in failures: a denied/cancelled ceremony, a failed
+  // code exchange, or a sign-in window that can't load the auth server has no
+  // auth-change to broadcast, so surface a safe error payload (code + message,
+  // never tokens) the renderer can observe.
+  const broadcastError = (error: AuthErrorPayload): void =>
+    broadcastAuthError(error, { browserWindow: opts.browserWindow });
+
   const removeIpcHandlers = registerIpcHandlers(sessionManager, {
     ipcMain: opts.ipcMain,
     broadcast,
+    broadcastError,
   });
 
   const scheme = schemeFromRedirectUri(config.redirectUri);
   let removeDeepLinks: (() => void) | null = null;
+  let protocolRegistered = false;
 
   /** Parse a deep-link callback URL and complete the OAuth round-trip. */
   async function handleCallbackUrl(url: string): Promise<void> {
@@ -139,9 +152,12 @@ export function createAuthKit(
     }
     const error = params.get('error');
     if (error) {
-      // Provider-side denial/error — nothing to exchange. The renderer learns
-      // via the absence of an auth change; surfacing richer errors is Phase 3.
-      console.error('[authkit-electron] OAuth callback error:', error);
+      // Provider-side denial/error (or a window-ceremony cancellation, which
+      // arrives as `?error=window_closed`) — nothing to exchange. Surface it so
+      // the renderer can react instead of silently staying signed out.
+      const description = params.get('error_description') ?? undefined;
+      console.error('[authkit-electron] OAuth callback error:', error, description ?? '');
+      broadcastError({ code: error, message: description ?? error });
       return;
     }
     const code = params.get('code');
@@ -153,6 +169,9 @@ export function createAuthKit(
       broadcast(toRendererAuthPayload(auth));
     } catch (err) {
       console.error('[authkit-electron] callback completion failed:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      const errorCode = err instanceof Error ? err.name : 'CallbackError';
+      broadcastError({ code: errorCode, message });
     }
   }
 
@@ -166,6 +185,12 @@ export function createAuthKit(
   });
 
   function registerProtocol(): void {
+    // Idempotent: wiring the deep-link listeners twice would leak the first set
+    // (and double-handle every callback). Register exactly once; subsequent
+    // calls are a no-op until `cleanup()` resets the flag.
+    if (protocolRegistered) {
+      return;
+    }
     registerProtocolImpl(scheme, { app: opts.app, process: opts.process });
     removeDeepLinks = wireDeepLinks(
       scheme,
@@ -174,6 +199,7 @@ export function createAuthKit(
       },
       { app: opts.app, process: opts.process, onSecondInstance: opts.onSecondInstance },
     );
+    protocolRegistered = true;
   }
 
   function cleanup(): void {
@@ -181,6 +207,7 @@ export function createAuthKit(
     removeCeremonyCallback();
     removeDeepLinks?.();
     removeDeepLinks = null;
+    protocolRegistered = false;
   }
 
   return { registerProtocol, cleanup };

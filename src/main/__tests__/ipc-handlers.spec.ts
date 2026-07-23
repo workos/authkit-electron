@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../shared/ipc-channels.js';
 import type { AuthResult } from '../../shared/types.js';
 import type { BrowserWindowsLike, IpcMainLike } from '../ipc-handlers.js';
-import { broadcastAuthChange, registerIpcHandlers } from '../ipc-handlers.js';
+import { broadcastAuthChange, broadcastAuthError, registerIpcHandlers } from '../ipc-handlers.js';
 import type { SessionManager } from '../session-manager.js';
 
 // Top-level import pulls `ipcMain`/`BrowserWindow` from electron; tests inject
@@ -169,6 +169,45 @@ describe('registerIpcHandlers — result shape', () => {
     expect(sm.beginSignIn).toHaveBeenCalledWith({ screenHint: 'sign-up' });
   });
 
+  it('signIn failure broadcasts an auth-error AND still returns { ok: false }', async () => {
+    const ipc = makeIpcMain();
+    const broadcastError = vi.fn();
+    const sm = makeSessionManager({
+      beginSignIn: vi.fn(async () => {
+        // Mirrors the window ceremony's open() rejecting, e.g. win.loadURL()
+        // failing because the auth server is unreachable.
+        throw Object.assign(new Error('ERR_CONNECTION_REFUSED'), { name: 'SignInOpenError' });
+      }),
+    });
+    registerIpcHandlers(sm, { ipcMain: ipc, broadcast: vi.fn(), broadcastError });
+
+    const result = (await ipc.invoke(IPC_CHANNELS.signIn)) as {
+      ok: false;
+      error: { code: string; message: string };
+    };
+
+    // The renderer promise still rejects (the provider re-throws on ok: false)…
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'SignInOpenError', message: 'ERR_CONNECTION_REFUSED' });
+    // …AND the failure is broadcast so useAuth().error is populated.
+    expect(broadcastError).toHaveBeenCalledTimes(1);
+    expect(broadcastError).toHaveBeenCalledWith({
+      code: 'SignInOpenError',
+      message: 'ERR_CONNECTION_REFUSED',
+    });
+  });
+
+  it('signIn success does not broadcast an auth-error', async () => {
+    const ipc = makeIpcMain();
+    const broadcastError = vi.fn();
+    registerIpcHandlers(makeSessionManager(), { ipcMain: ipc, broadcast: vi.fn(), broadcastError });
+
+    const result = (await ipc.invoke(IPC_CHANNELS.signIn)) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(broadcastError).not.toHaveBeenCalled();
+  });
+
   it('signOut returns the logout URL and broadcasts a signed-out change', async () => {
     const ipc = makeIpcMain();
     const broadcast = vi.fn();
@@ -207,6 +246,22 @@ describe('broadcastAuthChange', () => {
 
     expect(live.webContents.send).toHaveBeenCalledWith(IPC_CHANNELS.authChanged, {
       user: null,
+    });
+    expect(dead.webContents.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('broadcastAuthError', () => {
+  it('sends a safe error payload on the auth-error channel to every live window', () => {
+    const live = { webContents: { isDestroyed: () => false, send: vi.fn() } };
+    const dead = { webContents: { isDestroyed: () => true, send: vi.fn() } };
+    const bw: BrowserWindowsLike = { getAllWindows: () => [live, dead] };
+
+    broadcastAuthError({ code: 'access_denied', message: 'nope' }, { browserWindow: bw });
+
+    expect(live.webContents.send).toHaveBeenCalledWith(IPC_CHANNELS.authError, {
+      code: 'access_denied',
+      message: 'nope',
     });
     expect(dead.webContents.send).not.toHaveBeenCalled();
   });

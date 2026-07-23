@@ -58,7 +58,7 @@ export interface AuthKitElectronConfig {
    * the OS keychain via `safeStorage`.
    */
   cookiePassword?: string;
-  /** Sign-in ceremony selection (default: system browser). Used in Phase 2. */
+  /** Sign-in ceremony selection (default: system browser). */
   ceremony?: { mode?: 'system-browser' | 'window' };
   /** Optional custom storage adapter; defaults to the bundled electron-store. */
   storage?: TokenStorage;
@@ -75,7 +75,7 @@ export type AuthKitClaims<TCustomClaims = CustomClaims> = BaseTokenClaims & TCus
  *
  * Structurally mirrors the core `AuthResult` but with the refresh token
  * REMOVED — the refresh token must never appear in any IPC payload. The IPC
- * layer (Phase 2) produces this shape from the main-side `AuthResult`.
+ * layer produces this shape from the main-side `AuthResult`.
  */
 export type RendererAuthPayload<TCustomClaims = CustomClaims> =
   | { user: null }
@@ -94,10 +94,26 @@ export type RendererAuthPayload<TCustomClaims = CustomClaims> =
     };
 
 /**
+ * Renderer-facing description of a failed sign-in / callback attempt.
+ *
+ * Carries only a stable `code` (for branching) and a human-readable `message` —
+ * never tokens or any other secret. Broadcast on the auth-error channel when a
+ * sign-in ceremony returns a provider error, is cancelled, fails to open, or
+ * the code/token exchange fails, so the renderer can surface the failure
+ * instead of silently staying signed out.
+ */
+export interface AuthErrorPayload {
+  /** A stable, branchable error code (e.g. the provider `error` value). */
+  code: string;
+  /** A human-readable description safe to show or log. */
+  message: string;
+}
+
+/**
  * Strip the refresh token (and anything else not renderer-safe) from a
  * main-side `AuthResult`, producing a `RendererAuthPayload`. This is the single
- * chokepoint the Phase 2 IPC layer uses to guarantee `refreshToken` never
- * leaves the main process.
+ * chokepoint the IPC layer uses to guarantee `refreshToken` never leaves the
+ * main process.
  */
 export function toRendererAuthPayload<TCustomClaims = CustomClaims>(
   auth: AuthResult<TCustomClaims>,

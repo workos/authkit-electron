@@ -14,7 +14,7 @@
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import type { IpcResult, SignInOptions } from '../shared/ipc.js';
-import type { RendererAuthPayload } from '../shared/types.js';
+import type { AuthErrorPayload, RendererAuthPayload } from '../shared/types.js';
 import { AuthKitContext, type AuthKitContextValue, useBridge } from './context.js';
 
 /** Internal reducer-free state: the latest payload + the loading flag. */
@@ -38,6 +38,8 @@ export function AuthKitProvider({ children }: AuthKitProviderProps): ReactNode {
   // useBridge throws a clear error if exposeAuthKit() wasn't called in preload.
   const bridge = useBridge();
   const [state, setState] = useState<ProviderState>({ auth: SIGNED_OUT, isLoading: true });
+  // The latest sign-in failure, surfaced to consumers via `useAuth().error`.
+  const [error, setError] = useState<AuthErrorPayload | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -61,13 +63,25 @@ export function AuthKitProvider({ children }: AuthKitProviderProps): ReactNode {
     );
 
     // 2. Subscribe to pushes from any window. Returns an unsubscribe.
-    const unsubscribe = bridge.onAuthChange((payload) => {
+    const unsubscribeChange = bridge.onAuthChange((payload) => {
       setState({ auth: payload, isLoading: false });
+      // A successful auth change clears any stale sign-in error.
+      if (payload.user !== null) {
+        setError(null);
+      }
+    });
+
+    // 3. Subscribe to sign-in failures (denied/cancelled ceremony, failed
+    //    exchange). A failure leaves us signed out, so stop the loading state.
+    const unsubscribeError = bridge.onAuthError((authError) => {
+      setError(authError);
+      setState((prev) => (prev.isLoading ? { ...prev, isLoading: false } : prev));
     });
 
     return () => {
       active = false;
-      unsubscribe();
+      unsubscribeChange();
+      unsubscribeError();
     };
     // The bridge identity is stable for the window's lifetime; subscribe once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,11 +127,12 @@ export function AuthKitProvider({ children }: AuthKitProviderProps): ReactNode {
   const value = useMemo<AuthKitContextValue>(() => {
     const { auth, isLoading } = state;
     if (auth.user === null) {
-      return { user: null, isLoading, ...actions };
+      return { user: null, isLoading, error, ...actions };
     }
     return {
       user: auth.user,
       isLoading,
+      error,
       sessionId: auth.sessionId,
       organizationId: auth.organizationId,
       role: auth.role,
@@ -129,7 +144,7 @@ export function AuthKitProvider({ children }: AuthKitProviderProps): ReactNode {
       claims: auth.claims,
       ...actions,
     };
-  }, [state, actions]);
+  }, [state, error, actions]);
 
   return <AuthKitContext.Provider value={value}>{children}</AuthKitContext.Provider>;
 }

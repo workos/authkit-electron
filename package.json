@@ -39,7 +39,7 @@
     "prepack": "npm run rebuild",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "lint": "oxlint .",
+    "lint": "oxlint --deny-warnings .",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "test:coverage": "vitest --run --coverage",
@@ -85,6 +85,6 @@
     }
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.11.0"
   }
 }

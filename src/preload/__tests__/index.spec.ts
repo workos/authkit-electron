@@ -64,6 +64,7 @@ describe('exposeAuthKit — contextIsolated branch', () => {
     expect(typeof bridge.getAccessToken).toBe('function');
     expect(typeof bridge.switchToOrganization).toBe('function');
     expect(typeof bridge.onAuthChange).toBe('function');
+    expect(typeof bridge.onAuthError).toBe('function');
   });
 
   it('throws a clear error when contextBridge exposure fails', () => {
@@ -127,5 +128,19 @@ describe('bridge methods → ipcRenderer on shared channels', () => {
 
     unsubscribe();
     expect(removeListener).toHaveBeenCalledWith(IPC_CHANNELS.authChanged, expect.any(Function));
+  });
+
+  it('onAuthError subscribes on the auth-error channel and returns an unsubscribe', () => {
+    const bridge = exposedBridge();
+    const cb = vi.fn();
+    const unsubscribe = bridge.onAuthError(cb);
+
+    expect(on).toHaveBeenCalledWith(IPC_CHANNELS.authError, expect.any(Function));
+    const listener = on.mock.calls[0]?.[1] as (e: unknown, p: unknown) => void;
+    listener({}, { code: 'access_denied', message: 'nope' });
+    expect(cb).toHaveBeenCalledWith({ code: 'access_denied', message: 'nope' });
+
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith(IPC_CHANNELS.authError, expect.any(Function));
   });
 });

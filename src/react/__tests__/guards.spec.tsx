@@ -45,6 +45,7 @@ function makeBridge(getUserResult: IpcResult<RendererAuthPayload>): {
         listeners.delete(cb);
       };
     }),
+    onAuthError: vi.fn(() => () => {}),
   };
   return {
     bridge,

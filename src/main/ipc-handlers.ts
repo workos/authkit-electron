@@ -5,8 +5,8 @@
  * session manager. Two load-bearing properties:
  *
  * 1. **No refresh token crosses IPC.** Every renderer-facing auth payload is
- *    built by `toRendererAuthPayload` (Phase 1), which strips `refreshToken`
- *    via an explicit allowlist. This module never hand-builds a payload.
+ *    built by `toRendererAuthPayload`, which strips `refreshToken` via an
+ *    explicit allowlist. This module never hand-builds a payload.
  * 2. **Errors never throw across `invoke`.** `ipcRenderer.invoke` flattens a
  *    rejected handler into an opaque rejection, so we return a discriminated
  *    `IpcResult` (`{ ok: true, data } | { ok: false, error }`) instead — the
@@ -16,7 +16,11 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels.js';
 import type { IpcResult } from '../shared/ipc.js';
-import { type RendererAuthPayload, toRendererAuthPayload } from '../shared/types.js';
+import {
+  type AuthErrorPayload,
+  type RendererAuthPayload,
+  toRendererAuthPayload,
+} from '../shared/types.js';
 import type { SessionManager } from './session-manager.js';
 
 /** Minimal `ipcMain` surface (injectable for tests). */
@@ -45,6 +49,12 @@ export interface RegisterIpcHandlersOptions {
    * deep-link callback and the IPC handlers share one broadcast path.
    */
   broadcast?: (payload: RendererAuthPayload) => void;
+  /**
+   * Override the auth-error broadcaster. Defaults to {@link broadcastAuthError}
+   * over all `BrowserWindow`s. Injected by tests, and by `createAuthKit` so the
+   * deep-link callback and the IPC handlers share one error-broadcast path.
+   */
+  broadcastError?: (error: AuthErrorPayload) => void;
 }
 
 /**
@@ -78,18 +88,30 @@ export function registerIpcHandlers(
   const ipc: IpcMainLike = opts.ipcMain ?? (ipcMain as unknown as IpcMainLike);
   const broadcast =
     opts.broadcast ?? ((payload: RendererAuthPayload) => broadcastAuthChange(payload));
+  const broadcastError =
+    opts.broadcastError ?? ((error: AuthErrorPayload) => broadcastAuthError(error));
 
   // ipcMain.handle passes (event, ...args); the renderer's first invoke arg is
   // therefore args[1]. We read it positionally so the handler is agnostic to
   // the IpcMainInvokeEvent type (which we deliberately don't import here).
-  ipc.handle(IPC_CHANNELS.signIn, (...args: unknown[]): Promise<IpcResult<null>> => {
+  ipc.handle(IPC_CHANNELS.signIn, async (...args: unknown[]): Promise<IpcResult<null>> => {
     const signInOpts = (args[1] ?? undefined) as
       | { screenHint?: 'sign-in' | 'sign-up'; organizationId?: string }
       | undefined;
-    return toResult(async () => {
+    const result = await toResult(async () => {
       await sm.beginSignIn(signInOpts);
       return null;
     });
+    if (!result.ok) {
+      // A failed begin (e.g. the sign-in window couldn't load the auth server)
+      // never reaches the callback path, so it would otherwise bypass the
+      // auth-error broadcast entirely: the caller's promise rejects, but
+      // `useAuth().error` stays empty. Broadcast the same safe `{ code,
+      // message }` the other failure modes use, AND still return the error
+      // result so the renderer promise rejects (backwards-compatible).
+      broadcastError(result.error);
+    }
+    return result;
   });
 
   ipc.handle(
@@ -139,6 +161,18 @@ export interface BroadcastOptions {
   browserWindow?: BrowserWindowsLike;
 }
 
+/** Send `payload` on `channel` to every live window, skipping destroyed ones. */
+function sendToAllWindows(channel: string, payload: unknown, opts: BroadcastOptions): void {
+  const bw: BrowserWindowsLike =
+    opts.browserWindow ?? (BrowserWindow as unknown as BrowserWindowsLike);
+  for (const win of bw.getAllWindows()) {
+    const wc = win.webContents;
+    if (!wc.isDestroyed()) {
+      wc.send(channel, payload);
+    }
+  }
+}
+
 /**
  * Broadcast an auth-change payload to every open window's renderer.
  *
@@ -150,12 +184,18 @@ export function broadcastAuthChange(
   payload: RendererAuthPayload,
   opts: BroadcastOptions = {},
 ): void {
-  const bw: BrowserWindowsLike =
-    opts.browserWindow ?? (BrowserWindow as unknown as BrowserWindowsLike);
-  for (const win of bw.getAllWindows()) {
-    const wc = win.webContents;
-    if (!wc.isDestroyed()) {
-      wc.send(IPC_CHANNELS.authChanged, payload);
-    }
-  }
+  sendToAllWindows(IPC_CHANNELS.authChanged, payload, opts);
+}
+
+/**
+ * Broadcast an auth-error payload to every open window's renderer.
+ *
+ * Used when a sign-in ceremony returns a provider error, is cancelled, fails
+ * to open (e.g. the auth server is unreachable), or the code/token exchange
+ * fails — so the renderer can surface the failure instead of silently staying
+ * signed out. The payload carries only a safe `code` + `message`; it never
+ * contains tokens.
+ */
+export function broadcastAuthError(error: AuthErrorPayload, opts: BroadcastOptions = {}): void {
+  sendToAllWindows(IPC_CHANNELS.authError, error, opts);
 }

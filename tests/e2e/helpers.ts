@@ -22,6 +22,7 @@ import {
   _electron as electron,
   expect,
 } from '@playwright/test';
+import { AUTHKIT_BRIDGE_KEY } from '../../src/shared/ipc-channels.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** Repo root (tests/e2e/ -> ../..). */
@@ -137,20 +138,21 @@ export async function expectSignedIn(window: Page): Promise<void> {
 /**
  * Assert the refresh token is not exposed to the renderer.
  *
- * The renderer can only read what crosses the IPC bridge (`window.__authkit_electron`).
+ * The renderer can only read what crosses the IPC bridge (`window[AUTHKIT_BRIDGE_KEY]`).
  * We serialize everything reachable through `getUser()` and assert no
  * `refreshToken` field is present — the single chokepoint is the SDK's
  * `toRendererAuthPayload`, and this is the e2e backstop for it.
  */
 export async function expectNoRefreshTokenInRenderer(window: Page): Promise<void> {
-  const payload = await window.evaluate(async () => {
-    const bridge = (globalThis as { __authkit_electron?: { getUser(): Promise<unknown> } })
-      .__authkit_electron;
+  const payload = await window.evaluate(async (bridgeKey) => {
+    const bridge = (globalThis as Partial<Record<string, { getUser(): Promise<unknown> }>>)[
+      bridgeKey
+    ];
     if (!bridge) {
       return null;
     }
     return bridge.getUser();
-  });
+  }, AUTHKIT_BRIDGE_KEY);
   const serialized = JSON.stringify(payload ?? {});
   expect(serialized).not.toContain('refreshToken');
 }

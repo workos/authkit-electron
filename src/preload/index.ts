@@ -8,19 +8,21 @@
  * a "these must match" comment (the bug in the hand-wired example).
  *
  * Renderer→main calls go through `ipcRenderer.invoke` and resolve to an
- * `IpcResult` discriminated union; the renderer (`/react`, Phase 3) unwraps it.
- * The main→renderer auth-change push is delivered via `onAuthChange`, which
- * returns an unsubscribe so React effects can clean up.
+ * `IpcResult` discriminated union; the renderer (`/react`) unwraps it. The
+ * main→renderer pushes are delivered via `onAuthChange` (state changed) and
+ * `onAuthError` (a sign-in attempt failed), each returning an unsubscribe so
+ * React effects can clean up.
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
 import { AUTHKIT_BRIDGE_KEY, IPC_CHANNELS } from '../shared/ipc-channels.js';
 import type { AuthKitBridge } from '../shared/ipc.js';
-import type { RendererAuthPayload } from '../shared/types.js';
+import type { AuthErrorPayload, RendererAuthPayload } from '../shared/types.js';
 
 // Re-export the cross-context contract so `@workos/authkit-electron/preload`
 // consumers (and the renderer typings) keep importing it from the preload entry.
 export type { AuthKitBridge, IpcResult, SignInOptions } from '../shared/ipc.js';
+export type { AuthErrorPayload, RendererAuthPayload } from '../shared/types.js';
 export { AUTHKIT_BRIDGE_KEY } from '../shared/ipc-channels.js';
 
 /** Build the bridge object (pure — no Electron globals touched at call time). */
@@ -37,6 +39,13 @@ function createBridge(): AuthKitBridge {
       ipcRenderer.on(IPC_CHANNELS.authChanged, listener);
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.authChanged, listener);
+      };
+    },
+    onAuthError: (callback) => {
+      const listener = (_event: unknown, error: AuthErrorPayload): void => callback(error);
+      ipcRenderer.on(IPC_CHANNELS.authError, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.authError, listener);
       };
     },
   };

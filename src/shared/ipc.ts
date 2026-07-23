@@ -9,7 +9,7 @@
  * (which pulls in main-only Electron APIs).
  */
 
-import type { RendererAuthPayload } from './types.js';
+import type { AuthErrorPayload, RendererAuthPayload } from './types.js';
 
 /**
  * Discriminated result returned across every renderer→main `invoke`.
@@ -37,4 +37,10 @@ export interface AuthKitBridge {
   switchToOrganization(organizationId: string): Promise<IpcResult<RendererAuthPayload>>;
   /** Subscribe to auth-change broadcasts. Returns an unsubscribe function. */
   onAuthChange(callback: (payload: RendererAuthPayload) => void): () => void;
+  /**
+   * Subscribe to auth-error broadcasts (a failed/denied/cancelled sign-in or a
+   * failed code exchange). Returns an unsubscribe function. The payload never
+   * contains tokens — only a safe `code` + `message`.
+   */
+  onAuthError(callback: (error: AuthErrorPayload) => void): () => void;
 }
