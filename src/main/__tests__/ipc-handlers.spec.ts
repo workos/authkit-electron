@@ -169,6 +169,45 @@ describe('registerIpcHandlers — result shape', () => {
     expect(sm.beginSignIn).toHaveBeenCalledWith({ screenHint: 'sign-up' });
   });
 
+  it('signIn failure broadcasts an auth-error AND still returns { ok: false }', async () => {
+    const ipc = makeIpcMain();
+    const broadcastError = vi.fn();
+    const sm = makeSessionManager({
+      beginSignIn: vi.fn(async () => {
+        // Mirrors the window ceremony's open() rejecting, e.g. win.loadURL()
+        // failing because the auth server is unreachable.
+        throw Object.assign(new Error('ERR_CONNECTION_REFUSED'), { name: 'SignInOpenError' });
+      }),
+    });
+    registerIpcHandlers(sm, { ipcMain: ipc, broadcast: vi.fn(), broadcastError });
+
+    const result = (await ipc.invoke(IPC_CHANNELS.signIn)) as {
+      ok: false;
+      error: { code: string; message: string };
+    };
+
+    // The renderer promise still rejects (the provider re-throws on ok: false)…
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'SignInOpenError', message: 'ERR_CONNECTION_REFUSED' });
+    // …AND the failure is broadcast so useAuth().error is populated.
+    expect(broadcastError).toHaveBeenCalledTimes(1);
+    expect(broadcastError).toHaveBeenCalledWith({
+      code: 'SignInOpenError',
+      message: 'ERR_CONNECTION_REFUSED',
+    });
+  });
+
+  it('signIn success does not broadcast an auth-error', async () => {
+    const ipc = makeIpcMain();
+    const broadcastError = vi.fn();
+    registerIpcHandlers(makeSessionManager(), { ipcMain: ipc, broadcast: vi.fn(), broadcastError });
+
+    const result = (await ipc.invoke(IPC_CHANNELS.signIn)) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(broadcastError).not.toHaveBeenCalled();
+  });
+
   it('signOut returns the logout URL and broadcasts a signed-out change', async () => {
     const ipc = makeIpcMain();
     const broadcast = vi.fn();

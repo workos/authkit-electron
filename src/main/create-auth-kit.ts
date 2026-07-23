@@ -125,15 +125,17 @@ export function createAuthKit(
   const broadcast = (payload: RendererAuthPayload): void =>
     broadcastAuthChange(payload, { browserWindow: opts.browserWindow });
 
-  // Companion path for sign-in failures: a denied/cancelled ceremony or a failed
-  // code exchange has no auth-change to broadcast, so surface a safe error
-  // payload (code + message, never tokens) the renderer can observe.
+  // Companion path for sign-in failures: a denied/cancelled ceremony, a failed
+  // code exchange, or a sign-in window that can't load the auth server has no
+  // auth-change to broadcast, so surface a safe error payload (code + message,
+  // never tokens) the renderer can observe.
   const broadcastError = (error: AuthErrorPayload): void =>
     broadcastAuthError(error, { browserWindow: opts.browserWindow });
 
   const removeIpcHandlers = registerIpcHandlers(sessionManager, {
     ipcMain: opts.ipcMain,
     broadcast,
+    broadcastError,
   });
 
   const scheme = schemeFromRedirectUri(config.redirectUri);

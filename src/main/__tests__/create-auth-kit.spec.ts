@@ -396,6 +396,49 @@ describe('createAuthKit — wiring', () => {
     spy.mockRestore();
   });
 
+  it('broadcasts an auth-error when the ceremony fails to open, and the IPC result is ok: false', async () => {
+    const app = makeApp();
+    const ipc = makeIpcMain();
+    const sendSpy = vi.fn();
+
+    // The window ceremony's open() rejects when win.loadURL() fails (e.g. the
+    // auth server is unreachable). The failure must BOTH reject the renderer's
+    // signIn() promise (ok: false) AND broadcast an auth-error, so
+    // useAuth().error is populated like every other failure mode.
+    const ceremony: Ceremony = {
+      open: vi.fn(async () => {
+        throw Object.assign(new Error('ERR_NAME_NOT_RESOLVED'), { name: 'SignInOpenError' });
+      }),
+      endSession: vi.fn(async () => {}),
+      onCallback: () => () => {},
+    };
+
+    const client = createWorkOS({ clientId: 'client_test' }) as unknown as WorkOS;
+    const kit = createAuthKit(config, {
+      storage: makeStorage(),
+      client,
+      ceremony,
+      ipcMain: ipc,
+      app,
+      browserWindow: {
+        getAllWindows: () => [{ webContents: { isDestroyed: () => false, send: sendSpy } }],
+      },
+      process: { argv: ['electron'], execPath: '/e' },
+    });
+    kit.registerProtocol();
+
+    const result = (await (
+      ipc.handlers.get(IPC_CHANNELS.signIn) as (...a: unknown[]) => Promise<unknown>
+    )({}, undefined)) as { ok: boolean; error?: { code: string; message: string } };
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'SignInOpenError', message: 'ERR_NAME_NOT_RESOLVED' });
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [channel, payload] = sendSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(channel).toBe(IPC_CHANNELS.authError);
+    expect(payload).toEqual({ code: 'SignInOpenError', message: 'ERR_NAME_NOT_RESOLVED' });
+  });
+
   it('registerProtocol is idempotent — repeated calls do not re-wire listeners', () => {
     const app = makeApp();
     const kit = createAuthKit(config, {

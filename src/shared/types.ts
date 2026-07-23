@@ -98,9 +98,9 @@ export type RendererAuthPayload<TCustomClaims = CustomClaims> =
  *
  * Carries only a stable `code` (for branching) and a human-readable `message` —
  * never tokens or any other secret. Broadcast on the auth-error channel when a
- * sign-in ceremony returns a provider error, is cancelled, or the code/token
- * exchange fails, so the renderer can surface the failure instead of silently
- * staying signed out.
+ * sign-in ceremony returns a provider error, is cancelled, fails to open, or
+ * the code/token exchange fails, so the renderer can surface the failure
+ * instead of silently staying signed out.
  */
 export interface AuthErrorPayload {
   /** A stable, branchable error code (e.g. the provider `error` value). */
