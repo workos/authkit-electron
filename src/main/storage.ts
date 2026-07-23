@@ -136,6 +136,13 @@ export function createDefaultStorage(opts: CreateStorageOptions = {}): TokenStor
         return ss.decryptString(buf);
       }
       if (stored.startsWith(PLAINTEXT_PREFIX)) {
+        // Mirror the write-path policy: the SDK only ever writes a plaintext
+        // value when `allowPlaintext` is enabled. Rejecting `plain:` otherwise
+        // prevents a local file writer from injecting a value the SDK would
+        // never have produced (forged session / cookiePassword / verifiers).
+        if (!allowPlaintext) {
+          return null;
+        }
         return stored.slice(PLAINTEXT_PREFIX.length);
       }
       return null;

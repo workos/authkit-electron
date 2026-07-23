@@ -63,7 +63,7 @@ jobs:
         run: pnpm run publint
 
       - name: Types (Are The Types Wrong?)
-        run: pnpm run attw -- --pack --profile esm-only
+        run: pnpm run attw --pack --profile esm-only
 
       # The example resolves @workos/authkit-electron from the BUILT dist
       # (workspace:*), so a broken public type fails this build (criterion 8).
