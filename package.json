@@ -2,7 +2,6 @@
   "name": "@workos/authkit-electron",
   "version": "0.0.0",
   "description": "WorkOS AuthKit for Electron — main, preload, and React renderer bindings built on @workos/authkit-session.",
-  "packageManager": "pnpm@10.28.0",
   "license": "MIT",
   "files": [
     "dist",
@@ -87,5 +86,6 @@
   },
   "engines": {
     "node": ">=22.11.0"
-  }
+  },
+  "packageManager": "pnpm@10.28.0"
 }
