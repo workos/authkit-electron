@@ -279,6 +279,55 @@ describe('createDefaultStorage — pending verifiers', () => {
   });
 });
 
+describe('createDefaultStorage — read-path plaintext policy (SEC-1592)', () => {
+  // Models a local, same-user attacker who can write the electron-store JSON
+  // file but has no OS-keychain access: they inject `plain:`-prefixed values the
+  // SDK would never write while encryption is available and allowPlaintext=false.
+  const forgedSession: Session = {
+    accessToken: 'eyJATTACKER',
+    refreshToken: 'rt_ATTACKER',
+    user: { id: 'user_ATTACKER', email: 'attacker@evil.example' } as unknown as User,
+  };
+
+  it('rejects an injected plain: session when encryption is available', () => {
+    const store = makeStore();
+    store.raw.set('session', `plain:${JSON.stringify(forgedSession)}`);
+    const storage = createDefaultStorage({ store, safeStorage: makeSafeStorage(true) });
+    expect(storage.getSession()).toBeNull();
+  });
+
+  it('ignores an injected plain: cookiePassword and generates a fresh one', () => {
+    const store = makeStore();
+    const attackerKnown = 'A'.repeat(32);
+    store.raw.set('cookiePassword', `plain:${attackerKnown}`);
+    const storage = createDefaultStorage({ store, safeStorage: makeSafeStorage(true) });
+    expect(storage.getOrCreateCookiePassword()).not.toBe(attackerKnown);
+  });
+
+  it('rejects injected plain: pending verifiers', () => {
+    const store = makeStore();
+    store.raw.set(
+      'pendingVerifiers',
+      `plain:${JSON.stringify({
+        'attacker-state': { value: 'sealed', expiresAt: Date.now() + 600000 },
+      })}`,
+    );
+    const storage = createDefaultStorage({ store, safeStorage: makeSafeStorage(true) });
+    expect(storage.takePendingVerifier('attacker-state')).toBeNull();
+  });
+
+  it('still honors plain: values when allowPlaintext is enabled', () => {
+    const store = makeStore();
+    store.raw.set('session', `plain:${JSON.stringify(session)}`);
+    const storage = createDefaultStorage({
+      store,
+      safeStorage: makeSafeStorage(false),
+      allowPlaintext: true,
+    });
+    expect(storage.getSession()).toEqual(session);
+  });
+});
+
 describe('createDefaultStorage — default electron bindings', () => {
   it('constructs without injected deps (uses mocked electron + electron-store)', () => {
     // Exercises the default `safeStorage` / `new ElectronStore()` branch.
