@@ -42,13 +42,13 @@ npm install @workos/authkit-electron @workos-inc/node
 
 The package ships five entry points that version in lockstep:
 
-| Import                               | Process  | Provides                                                                                        |
-| ------------------------------------ | -------- | ----------------------------------------------------------------------------------------------- |
-| `@workos/authkit-electron`           | Main     | `createAuthKit`, default storage, shared types                                                  |
-| `@workos/authkit-electron/preload`   | Preload  | `exposeAuthKit`, the typed bridge contract                                                      |
-| `@workos/authkit-electron/react`     | Renderer | `AuthKitProvider`, `useAuth`, `useAccessToken`, `SignedIn/SignedOut`                            |
+| Import                               | Process  | Provides                                                                                                  |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `@workos/authkit-electron`           | Main     | `createAuthKit`, default storage, shared types                                                            |
+| `@workos/authkit-electron/preload`   | Preload  | `exposeAuthKit`, the typed bridge contract                                                                |
+| `@workos/authkit-electron/react`     | Renderer | `AuthKitProvider`, `useAuth`, `useAccessToken`, `SignedIn/SignedOut`                                      |
 | `@workos/authkit-electron/globals`   | Renderer | Types only: opt-in `Window` typing for the bridge (see [Renderer without React](#renderer-without-react)) |
-| `@workos/authkit-electron/internals` | Main     | Building blocks for advanced composition (see [Building blocks](#building-blocks))              |
+| `@workos/authkit-electron/internals` | Main     | Building blocks for advanced composition (see [Building blocks](#building-blocks))                        |
 
 ## Pre-flight
 

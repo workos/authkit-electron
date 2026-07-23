@@ -354,9 +354,7 @@ describe('signOut', () => {
     await manager.signOut();
 
     expect(endSession).toHaveBeenCalledTimes(1);
-    expect(endSession).toHaveBeenCalledWith(
-      'https://api.workos.com/logout?session_id=session_xyz',
-    );
+    expect(endSession).toHaveBeenCalledWith('https://api.workos.com/logout?session_id=session_xyz');
     expect(storage.clearSession).toHaveBeenCalledTimes(1);
   });
 
