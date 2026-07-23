@@ -145,9 +145,9 @@ export async function expectSignedIn(window: Page): Promise<void> {
  */
 export async function expectNoRefreshTokenInRenderer(window: Page): Promise<void> {
   const payload = await window.evaluate(async (bridgeKey) => {
-    const bridge = (
-      globalThis as Partial<Record<string, { getUser(): Promise<unknown> }>>
-    )[bridgeKey];
+    const bridge = (globalThis as Partial<Record<string, { getUser(): Promise<unknown> }>>)[
+      bridgeKey
+    ];
     if (!bridge) {
       return null;
     }
