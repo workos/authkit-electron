@@ -530,3 +530,14 @@ A complete, runnable Electron app consuming this SDK lives in [`example/`](./exa
 
 - [WorkOS AuthKit docs](https://workos.com/docs/user-management)
 - [`@workos/authkit-session`](https://www.npmjs.com/package/@workos/authkit-session) — the framework-agnostic core this library builds on
+
+## Contributing
+
+Issues and pull requests are welcome. Before opening a PR:
+
+- Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` — CI enforces all three.
+- Use a [conventional commit](https://www.conventionalcommits.org/) PR title (e.g. `fix: ...`, `feat: ...`); releases are cut automatically from them via release-please.
+
+## License
+
+[MIT](./LICENSE)
