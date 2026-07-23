@@ -359,10 +359,14 @@ signIn({ organizationId: 'org_123' }); // scope the sign-in to an org
 > When a sign-in is denied, cancelled, or the code exchange fails, the callback completes with no auth change — and when the sign-in window can't load the auth server at all (e.g. offline), the attempt never reaches the callback. Rather than leaving the user silently signed out, in every one of these cases the main process broadcasts a safe `{ code, message }` error (never tokens) that surfaces as `useAuth().error`. (`signIn()` also still rejects on the open failure, so existing `try`/`catch` code keeps working.)
 >
 > ```tsx
-> const { error, signIn } = useAuth();
-> // ...
-> {
->   error && <p role="alert">Sign-in failed: {error.message}</p>;
+> function SignInPanel() {
+>   const { error, signIn } = useAuth();
+>   return (
+>     <>
+>       <button onClick={() => signIn()}>Sign in</button>
+>       {error && <p role="alert">Sign-in failed: {error.message}</p>}
+>     </>
+>   );
 > }
 > ```
 >
