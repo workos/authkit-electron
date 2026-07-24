@@ -33,14 +33,6 @@ function makeJwt(claims: Record<string, unknown>): string {
   return `${b64url({ alg: 'none', typ: 'JWT' })}.${b64url(claims)}.`;
 }
 
-/** Let a chain of awaited promises (incl. the crypto unseal) fully settle. */
-async function flushAsync(): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    await Promise.resolve();
-  }
-  await new Promise((r) => setTimeout(r, 5));
-}
-
 function makeStorage(): TokenStorage {
   const pending = new Map<string, string>();
   let session: { accessToken: string; refreshToken: string; user: User } | null = null;
@@ -262,7 +254,9 @@ describe('createAuthKit — wiring', () => {
       { preventDefault: () => {} },
       `workos-auth://callback?code=auth_code&state=${encodeURIComponent(state as string)}`,
     );
-    await flushAsync();
+    // The callback pipeline unseals real crypto state before the exchange, so
+    // poll for its terminal event (the broadcast) instead of a fixed flush.
+    await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1), { timeout: 5000 });
 
     expect(authenticateWithCode).toHaveBeenCalledWith({
       code: 'auth_code',
@@ -298,13 +292,13 @@ describe('createAuthKit — wiring', () => {
 
     const listener = app.listeners['open-url'] as (e: unknown, url: string) => void;
     listener({ preventDefault: () => {} }, 'workos-auth://callback?code=c&state=unknown');
-    await flushAsync();
+    await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1), { timeout: 5000 });
 
     // State verification fails before the network, so the code is never
     // exchanged and no signed-in payload is broadcast — but the renderer is told
-    // the attempt failed via a safe auth-error (no crash).
+    // the attempt failed via a safe auth-error (no crash). The error broadcast
+    // is the pipeline's terminal event, so the exchange provably never ran.
     expect(authenticateWithCode).not.toHaveBeenCalled();
-    expect(sendSpy).toHaveBeenCalledTimes(1);
     const [channel] = sendSpy.mock.calls[0] as [string, Record<string, unknown>];
     expect(channel).toBe(IPC_CHANNELS.authError);
   });
@@ -329,11 +323,9 @@ describe('createAuthKit — wiring', () => {
       { preventDefault: () => {} },
       'workos-auth://callback?error=access_denied&error_description=User+said+no',
     );
-    await flushAsync();
-
     // No code to exchange → no auth-change broadcast, but the renderer learns of
     // the failure via a safe auth-error payload (code + message, no tokens).
-    expect(sendSpy).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1), { timeout: 5000 });
     const [channel, payload] = sendSpy.mock.calls[0] as [string, Record<string, unknown>];
     expect(channel).toBe(IPC_CHANNELS.authError);
     expect(payload).toEqual({ code: 'access_denied', message: 'User said no' });
@@ -386,9 +378,8 @@ describe('createAuthKit — wiring', () => {
       { preventDefault: () => {} },
       `workos-auth://callback?code=auth_code&state=${encodeURIComponent(state as string)}`,
     );
-    await flushAsync();
+    await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1), { timeout: 5000 });
 
-    expect(sendSpy).toHaveBeenCalledTimes(1);
     const [channel, payload] = sendSpy.mock.calls[0] as [string, Record<string, unknown>];
     expect(channel).toBe(IPC_CHANNELS.authError);
     expect(payload).toEqual({ code: 'OAuthException', message: 'code already used' });
