@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AppLike, ProcessLike } from '../deep-link.js';
-import { parseCallback, registerProtocol, wireDeepLinks } from '../deep-link.js';
+import { isWebScheme, parseCallback, registerProtocol, wireDeepLinks } from '../deep-link.js';
 
 // The module imports `app` from electron at the top; tests inject their own
 // `app`, so this mock just prevents the native binding from loading.
@@ -88,6 +88,26 @@ describe('registerProtocol', () => {
     const app = makeApp();
     registerProtocol(SCHEME, { app, process: proc({ defaultApp: false }) });
     expect(app.setAsDefaultProtocolClient).toHaveBeenCalledWith('workos-auth');
+  });
+
+  // Regression: an https redirectUri used to reach setAsDefaultProtocolClient,
+  // which asks the OS to make the app the DEFAULT BROWSER (hostile on Windows)
+  // and can never deliver an OAuth callback.
+  it('refuses http/https and never touches setAsDefaultProtocolClient', () => {
+    for (const scheme of ['http', 'https', 'HTTPS']) {
+      const app = makeApp();
+      expect(() => registerProtocol(scheme, { app, process: proc() })).toThrow(/default browser/);
+      expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('isWebScheme', () => {
+  it('matches http/https case-insensitively and nothing else', () => {
+    expect(isWebScheme('http')).toBe(true);
+    expect(isWebScheme('Https')).toBe(true);
+    expect(isWebScheme('workos-auth')).toBe(false);
+    expect(isWebScheme('httpsx')).toBe(false);
   });
 });
 

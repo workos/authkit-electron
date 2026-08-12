@@ -19,6 +19,7 @@ import { type Ceremony, type CreateCeremonyOptions, createCeremony } from './cer
 import { assertValidClientId, createPublicWorkOS, toAuthKitConfig } from './config.js';
 import {
   type AppLike,
+  isWebScheme,
   registerProtocol as registerProtocolImpl,
   wireDeepLinks,
 } from './deep-link.js';
@@ -47,6 +48,11 @@ export interface CreateAuthKitResult {
    * after the first call (the listeners are wired exactly once), so it never
    * leaks duplicate `open-url`/`second-instance` handlers. The deep-link
    * listeners are removed by {@link CreateAuthKitResult.cleanup}.
+   *
+   * With an `http(s)` `redirectUri` there is no custom protocol to register:
+   * in `ceremony.mode: 'window'` (which captures its callback in-window) this
+   * is a no-op, and in `system-browser` mode it throws, because nothing would
+   * ever capture the callback.
    */
   registerProtocol(): void;
   /** Remove IPC handlers and deep-link listeners. Call on app shutdown. */
@@ -190,6 +196,22 @@ export function createAuthKit(
     // calls are a no-op until `cleanup()` resets the flag.
     if (protocolRegistered) {
       return;
+    }
+    // An http(s) redirectUri is not a deep link. The window ceremony captures
+    // it in-window, so registration is simply unnecessary there; the
+    // system-browser ceremony has no other way to hear the callback, so a
+    // silent no-op would strand every sign-in — fail loudly instead.
+    if (isWebScheme(scheme)) {
+      if (config.ceremony?.mode === 'window') {
+        return;
+      }
+      throw new Error(
+        `redirectUri "${config.redirectUri}" uses the "${scheme}" scheme, which the OS ` +
+          `hands to the default browser, not to this app — the system-browser ceremony ` +
+          `would never receive the callback. Use a custom-protocol redirect URI ` +
+          `(e.g. "workos-auth://callback") and register it in the WorkOS Dashboard, or ` +
+          `switch to ceremony: { mode: 'window' }, which captures an https redirect in-app.`,
+      );
     }
     registerProtocolImpl(scheme, { app: opts.app, process: opts.process });
     removeDeepLinks = wireDeepLinks(

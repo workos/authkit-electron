@@ -449,6 +449,51 @@ describe('createAuthKit — wiring', () => {
     expect(app.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1);
   });
 
+  // Regression: schemeFromRedirectUri happily returns "https", which used to
+  // flow into setAsDefaultProtocolClient('https') — a request to become the
+  // user's default browser, and a callback that never arrives.
+  it('registerProtocol throws for an https redirectUri in system-browser mode', () => {
+    const app = makeApp();
+    const kit = createAuthKit(
+      { clientId: 'client_test', redirectUri: 'https://auth.example.com/callback' },
+      {
+        storage: makeStorage(),
+        client: { userManagement: {} } as unknown as WorkOS,
+        ipcMain: makeIpcMain(),
+        app,
+        process: { argv: ['electron'], execPath: '/e' },
+      },
+    );
+
+    expect(() => kit.registerProtocol()).toThrow(/workos-auth:\/\/callback|mode: 'window'/);
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+  });
+
+  it('registerProtocol is a no-op for an https redirectUri in window mode', () => {
+    const app = makeApp();
+    const kit = createAuthKit(
+      {
+        clientId: 'client_test',
+        redirectUri: 'https://auth.example.com/callback',
+        ceremony: { mode: 'window' },
+      },
+      {
+        storage: makeStorage(),
+        client: { userManagement: {} } as unknown as WorkOS,
+        ipcMain: makeIpcMain(),
+        ceremony: { open: vi.fn(), endSession: vi.fn(), onCallback: () => () => {} } as Ceremony,
+        app,
+        process: { argv: ['electron'], execPath: '/e' },
+      },
+    );
+
+    // The window ceremony intercepts the redirect in-window, so there is no
+    // protocol to claim and no deep-link listener to wire.
+    expect(() => kit.registerProtocol()).not.toThrow();
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+    expect(app.listeners['open-url']).toBeUndefined();
+  });
+
   it('cleanup removes handlers without throwing', () => {
     const kit = createAuthKit(config, {
       storage: makeStorage(),

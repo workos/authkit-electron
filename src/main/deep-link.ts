@@ -84,6 +84,20 @@ export function parseCallback(url: string): {
   return result;
 }
 
+/** Schemes owned by web browsers — an app must never claim these. */
+const WEB_SCHEMES = new Set(['http', 'https']);
+
+/**
+ * Is `scheme` an `http(s)` scheme (i.e. a browser's, not a deep link's)?
+ *
+ * Callers use this to refuse protocol registration for an `https://` redirect
+ * URI: `setAsDefaultProtocolClient('https')` does not "capture the callback",
+ * it asks the OS to make this app the user's default browser.
+ */
+export function isWebScheme(scheme: string): boolean {
+  return WEB_SCHEMES.has(scheme.toLowerCase());
+}
+
 /**
  * Register the app as the default client for `scheme://` URLs.
  *
@@ -91,11 +105,21 @@ export function parseCallback(url: string): {
  * must point at the Electron binary plus the resolved entry script, otherwise
  * the OS re-launches a bare Electron. In a packaged app the no-arg form is
  * correct.
+ *
+ * @throws {Error} if `scheme` is `http`/`https`. Claiming those means becoming
+ *   the default browser, never receiving an OAuth callback.
  */
 export function registerProtocol(
   scheme: string,
   deps: { app?: AppLike; process?: ProcessLike } = {},
 ): boolean {
+  if (isWebScheme(scheme)) {
+    throw new Error(
+      `Cannot register "${scheme}" as a custom protocol — setAsDefaultProtocolClient("${scheme}") ` +
+        `asks the OS to make this app the default browser, which is not how an OAuth ` +
+        `callback is captured. Use a custom scheme (e.g. "workos-auth://callback").`,
+    );
+  }
   const app = deps.app ?? (electronApp as unknown as AppLike);
   const proc = deps.process ?? (globalThis.process as unknown as ProcessLike);
   if (proc.defaultApp && proc.argv.length >= 2) {
