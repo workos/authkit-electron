@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AppLike, ProcessLike } from '../deep-link.js';
-import { isWebScheme, parseCallback, registerProtocol, wireDeepLinks } from '../deep-link.js';
+import {
+  acquireSingleInstanceLock,
+  isWebScheme,
+  parseCallback,
+  registerProtocol,
+  wireDeepLinks,
+} from '../deep-link.js';
 
 // The module imports `app` from electron at the top; tests inject their own
 // `app`, so this mock just prevents the native binding from loading.
@@ -99,6 +105,30 @@ describe('registerProtocol', () => {
       expect(() => registerProtocol(scheme, { app, process: proc() })).toThrow(/default browser/);
       expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('acquireSingleInstanceLock', () => {
+  it('forwards a second instance argv and releases the listener on cleanup', () => {
+    const app = makeApp();
+    const onSecondInstance = vi.fn();
+
+    const release = acquireSingleInstanceLock(onSecondInstance, { app });
+
+    expect(release).not.toBeNull();
+    app.listeners['second-instance']?.({} as never, ['electron', '--flag'] as never);
+    expect(onSecondInstance).toHaveBeenCalledWith(['electron', '--flag']);
+
+    release?.();
+    expect(app.removed).toContain('second-instance');
+  });
+
+  it('quits and returns null when the lock is already held', () => {
+    const app = makeApp(false);
+
+    expect(acquireSingleInstanceLock(vi.fn(), { app })).toBeNull();
+    expect(app.quit).toHaveBeenCalledTimes(1);
+    expect(app.listeners['second-instance']).toBeUndefined();
   });
 });
 

@@ -469,7 +469,7 @@ describe('createAuthKit — wiring', () => {
     expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
   });
 
-  it('registerProtocol is a no-op for an https redirectUri in window mode', () => {
+  it('registerProtocol claims no protocol for an https redirectUri in window mode', () => {
     const app = makeApp();
     const kit = createAuthKit(
       {
@@ -481,17 +481,47 @@ describe('createAuthKit — wiring', () => {
         storage: makeStorage(),
         client: { userManagement: {} } as unknown as WorkOS,
         ipcMain: makeIpcMain(),
-        ceremony: { open: vi.fn(), endSession: vi.fn(), onCallback: () => () => {} } as Ceremony,
         app,
         process: { argv: ['electron'], execPath: '/e' },
       },
     );
 
     // The window ceremony intercepts the redirect in-window, so there is no
-    // protocol to claim and no deep-link listener to wire.
+    // protocol to claim and no deep-link listener to wire...
     expect(() => kit.registerProtocol()).not.toThrow();
     expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
     expect(app.listeners['open-url']).toBeUndefined();
+    // ...but the single-instance lock is not a deep-link concern, and callers
+    // rely on registerProtocol() for it, so it is still acquired and still
+    // released by cleanup().
+    expect(typeof app.listeners['second-instance']).toBe('function');
+    expect(() => kit.cleanup()).not.toThrow();
+  });
+
+  // The decision keys off the ceremony instance, not config.ceremony.mode, so an
+  // injected self-capturing ceremony is not told its redirect URI is broken.
+  it('registerProtocol respects an injected self-capturing ceremony', () => {
+    const app = makeApp();
+    const selfCapturing: Ceremony = {
+      capturesCallback: true,
+      open: vi.fn(async () => {}),
+      endSession: vi.fn(async () => {}),
+      onCallback: () => () => {},
+    };
+    const kit = createAuthKit(
+      { clientId: 'client_test', redirectUri: 'https://auth.example.com/callback' },
+      {
+        storage: makeStorage(),
+        client: { userManagement: {} } as unknown as WorkOS,
+        ipcMain: makeIpcMain(),
+        ceremony: selfCapturing,
+        app,
+        process: { argv: ['electron'], execPath: '/e' },
+      },
+    );
+
+    expect(() => kit.registerProtocol()).not.toThrow();
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
   });
 
   it('cleanup removes handlers without throwing', () => {

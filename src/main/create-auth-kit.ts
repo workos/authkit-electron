@@ -19,6 +19,7 @@ import { type Ceremony, type CreateCeremonyOptions, createCeremony } from './cer
 import { assertValidClientId, createPublicWorkOS, toAuthKitConfig } from './config.js';
 import {
   type AppLike,
+  acquireSingleInstanceLock,
   isWebScheme,
   registerProtocol as registerProtocolImpl,
   wireDeepLinks,
@@ -49,10 +50,10 @@ export interface CreateAuthKitResult {
    * leaks duplicate `open-url`/`second-instance` handlers. The deep-link
    * listeners are removed by {@link CreateAuthKitResult.cleanup}.
    *
-   * With an `http(s)` `redirectUri` there is no custom protocol to register:
-   * in `ceremony.mode: 'window'` (which captures its callback in-window) this
-   * is a no-op, and in `system-browser` mode it throws, because nothing would
-   * ever capture the callback.
+   * With an `http(s)` `redirectUri` there is no custom protocol to register: a
+   * self-capturing ceremony (`ceremony.mode: 'window'`) still acquires the
+   * single-instance lock but claims no protocol, while `system-browser` mode
+   * throws, because nothing would ever capture the callback.
    */
   registerProtocol(): void;
   /** Remove IPC handlers and deep-link listeners. Call on app shutdown. */
@@ -145,7 +146,7 @@ export function createAuthKit(
   });
 
   const scheme = schemeFromRedirectUri(config.redirectUri);
-  let removeDeepLinks: (() => void) | null = null;
+  let removeOsListeners: (() => void) | null = null;
   let protocolRegistered = false;
 
   /** Parse a deep-link callback URL and complete the OAuth round-trip. */
@@ -197,24 +198,30 @@ export function createAuthKit(
     if (protocolRegistered) {
       return;
     }
-    // An http(s) redirectUri is not a deep link. The window ceremony captures
-    // it in-window, so registration is simply unnecessary there; the
-    // system-browser ceremony has no other way to hear the callback, so a
-    // silent no-op would strand every sign-in — fail loudly instead.
+    // An http(s) redirectUri is not a deep link. A self-capturing ceremony gets
+    // its callback in-window, so there is nothing to claim; one that depends on
+    // the deep link has no other way to hear the callback, so a silent no-op
+    // would strand every sign-in — fail loudly instead.
     if (isWebScheme(scheme)) {
-      if (config.ceremony?.mode === 'window') {
-        return;
+      if (!ceremony.capturesCallback) {
+        throw new Error(
+          `redirectUri "${config.redirectUri}" uses the "${scheme}" scheme, which the OS ` +
+            `hands to the default browser, not to this app — the system-browser ceremony ` +
+            `would never receive the callback. Use a custom-protocol redirect URI ` +
+            `(e.g. "workos-auth://callback") and register it in the WorkOS Dashboard, or ` +
+            `switch to ceremony: { mode: 'window' }, which captures an https redirect in-app.`,
+        );
       }
-      throw new Error(
-        `redirectUri "${config.redirectUri}" uses the "${scheme}" scheme, which the OS ` +
-          `hands to the default browser, not to this app — the system-browser ceremony ` +
-          `would never receive the callback. Use a custom-protocol redirect URI ` +
-          `(e.g. "workos-auth://callback") and register it in the WorkOS Dashboard, or ` +
-          `switch to ceremony: { mode: 'window' }, which captures an https redirect in-app.`,
-      );
+      // No protocol to claim — but the single-instance lock is not a deep-link
+      // concern, and callers rely on registerProtocol() for it, so still take it.
+      removeOsListeners = acquireSingleInstanceLock(() => opts.onSecondInstance?.(), {
+        app: opts.app,
+      });
+      protocolRegistered = true;
+      return;
     }
     registerProtocolImpl(scheme, { app: opts.app, process: opts.process });
-    removeDeepLinks = wireDeepLinks(
+    removeOsListeners = wireDeepLinks(
       scheme,
       (url) => {
         void handleCallbackUrl(url);
@@ -227,8 +234,8 @@ export function createAuthKit(
   function cleanup(): void {
     removeIpcHandlers();
     removeCeremonyCallback();
-    removeDeepLinks?.();
-    removeDeepLinks = null;
+    removeOsListeners?.();
+    removeOsListeners = null;
     protocolRegistered = false;
   }
 

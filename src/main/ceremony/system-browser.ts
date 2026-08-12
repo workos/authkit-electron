@@ -18,6 +18,9 @@ export function createSystemBrowserCeremony(opts: CreateCeremonyOptions = {}): C
   const shell: ShellLike = opts.shell ?? electronShell;
 
   return {
+    // The callback comes back out-of-band through the OS deep-link handler, so
+    // this ceremony depends on a claimable custom protocol.
+    capturesCallback: false,
     async open(url: string): Promise<void> {
       await shell.openExternal(url);
     },

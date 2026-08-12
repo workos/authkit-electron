@@ -29,7 +29,13 @@ export { createCeremony } from './main/ceremony/index.js';
 export type { Ceremony, CreateCeremonyOptions, ShellLike } from './main/ceremony/index.js';
 
 // Deep-link capture matrix + callback URL parsing.
-export { isWebScheme, parseCallback, registerProtocol, wireDeepLinks } from './main/deep-link.js';
+export {
+  acquireSingleInstanceLock,
+  isWebScheme,
+  parseCallback,
+  registerProtocol,
+  wireDeepLinks,
+} from './main/deep-link.js';
 export type { AppLike, ProcessLike, WireDeepLinksOptions } from './main/deep-link.js';
 
 // IPC handlers + auth-change / auth-error broadcast.

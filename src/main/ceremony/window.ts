@@ -99,6 +99,9 @@ export function createWindowCeremony(opts: CreateWindowCeremonyOptions): Ceremon
   };
 
   return {
+    // Navigation interception means the redirect never escapes to the OS, so no
+    // custom protocol needs claiming for this ceremony's callback to arrive.
+    capturesCallback: true,
     async open(url: string): Promise<void> {
       const win = createWindow({ parent: opts.parent, modal: opts.parent !== undefined });
 

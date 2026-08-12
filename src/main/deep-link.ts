@@ -129,6 +129,39 @@ export function registerProtocol(
   return app.setAsDefaultProtocolClient(scheme);
 }
 
+/**
+ * Acquire the single-instance lock and forward second-instance activations.
+ *
+ * Returns `null` when the lock is already held: this process is a duplicate and
+ * has been asked to quit, so the caller should wire nothing. Otherwise returns
+ * a cleanup that removes the `second-instance` listener.
+ *
+ * Split out from {@link wireDeepLinks} because the lock is NOT a deep-link
+ * concern — a single-instance app still wants exactly one instance when there
+ * is no custom protocol to claim (e.g. an `https` redirect URI captured
+ * in-window). `wireDeepLinks` layers URL extraction on top of this.
+ */
+export function acquireSingleInstanceLock(
+  onSecondInstance?: (argv: string[]) => void,
+  deps: { app?: AppLike } = {},
+): (() => void) | null {
+  const app = deps.app ?? (electronApp as unknown as AppLike);
+
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return null;
+  }
+
+  const listener = (_event: unknown, argv: string[]): void => {
+    onSecondInstance?.(argv);
+  };
+  app.on('second-instance', listener);
+
+  return () => {
+    app.removeListener('second-instance', listener as (...args: unknown[]) => void);
+  };
+}
+
 export interface WireDeepLinksOptions {
   app?: AppLike;
   process?: ProcessLike;
@@ -155,9 +188,17 @@ export function wireDeepLinks(
   const proc = opts.process ?? (globalThis.process as unknown as ProcessLike);
   const prefix = `${scheme}://`;
 
-  const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock) {
-    app.quit();
+  const releaseLock = acquireSingleInstanceLock(
+    (argv) => {
+      const url = argv.find((arg) => arg.startsWith(prefix));
+      if (url) {
+        onUrl(url);
+      }
+      opts.onSecondInstance?.();
+    },
+    { app },
+  );
+  if (!releaseLock) {
     return () => {};
   }
 
@@ -167,16 +208,8 @@ export function wireDeepLinks(
       onUrl(url);
     }
   };
-  const secondInstanceListener = (_event: unknown, argv: string[]): void => {
-    const url = argv.find((arg) => arg.startsWith(prefix));
-    if (url) {
-      onUrl(url);
-    }
-    opts.onSecondInstance?.();
-  };
 
   app.on('open-url', openUrlListener);
-  app.on('second-instance', secondInstanceListener);
 
   // Cold start on Windows/Linux: the launching URL is in our own argv.
   const initialUrl = proc.argv.find((arg) => arg.startsWith(prefix));
@@ -186,6 +219,6 @@ export function wireDeepLinks(
 
   return () => {
     app.removeListener('open-url', openUrlListener as (...args: unknown[]) => void);
-    app.removeListener('second-instance', secondInstanceListener as (...args: unknown[]) => void);
+    releaseLock();
   };
 }
