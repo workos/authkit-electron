@@ -84,6 +84,20 @@ export function parseCallback(url: string): {
   return result;
 }
 
+/** Schemes owned by web browsers — an app must never claim these. */
+const WEB_SCHEMES = new Set(['http', 'https']);
+
+/**
+ * Is `scheme` an `http(s)` scheme (i.e. a browser's, not a deep link's)?
+ *
+ * Callers use this to refuse protocol registration for an `https://` redirect
+ * URI: `setAsDefaultProtocolClient('https')` does not "capture the callback",
+ * it asks the OS to make this app the user's default browser.
+ */
+export function isWebScheme(scheme: string): boolean {
+  return WEB_SCHEMES.has(scheme.toLowerCase());
+}
+
 /**
  * Register the app as the default client for `scheme://` URLs.
  *
@@ -91,11 +105,21 @@ export function parseCallback(url: string): {
  * must point at the Electron binary plus the resolved entry script, otherwise
  * the OS re-launches a bare Electron. In a packaged app the no-arg form is
  * correct.
+ *
+ * @throws {Error} if `scheme` is `http`/`https`. Claiming those means becoming
+ *   the default browser, never receiving an OAuth callback.
  */
 export function registerProtocol(
   scheme: string,
   deps: { app?: AppLike; process?: ProcessLike } = {},
 ): boolean {
+  if (isWebScheme(scheme)) {
+    throw new Error(
+      `Cannot register "${scheme}" as a custom protocol — setAsDefaultProtocolClient("${scheme}") ` +
+        `asks the OS to make this app the default browser, which is not how an OAuth ` +
+        `callback is captured. Use a custom scheme (e.g. "workos-auth://callback").`,
+    );
+  }
   const app = deps.app ?? (electronApp as unknown as AppLike);
   const proc = deps.process ?? (globalThis.process as unknown as ProcessLike);
   if (proc.defaultApp && proc.argv.length >= 2) {
@@ -103,6 +127,39 @@ export function registerProtocol(
     return app.setAsDefaultProtocolClient(scheme, proc.execPath, [resolve(proc.argv[1] as string)]);
   }
   return app.setAsDefaultProtocolClient(scheme);
+}
+
+/**
+ * Acquire the single-instance lock and forward second-instance activations.
+ *
+ * Returns `null` when the lock is already held: this process is a duplicate and
+ * has been asked to quit, so the caller should wire nothing. Otherwise returns
+ * a cleanup that removes the `second-instance` listener.
+ *
+ * Split out from {@link wireDeepLinks} because the lock is NOT a deep-link
+ * concern — a single-instance app still wants exactly one instance when there
+ * is no custom protocol to claim (e.g. an `https` redirect URI captured
+ * in-window). `wireDeepLinks` layers URL extraction on top of this.
+ */
+export function acquireSingleInstanceLock(
+  onSecondInstance?: (argv: string[]) => void,
+  deps: { app?: AppLike } = {},
+): (() => void) | null {
+  const app = deps.app ?? (electronApp as unknown as AppLike);
+
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return null;
+  }
+
+  const listener = (_event: unknown, argv: string[]): void => {
+    onSecondInstance?.(argv);
+  };
+  app.on('second-instance', listener);
+
+  return () => {
+    app.removeListener('second-instance', listener as (...args: unknown[]) => void);
+  };
 }
 
 export interface WireDeepLinksOptions {
@@ -131,9 +188,17 @@ export function wireDeepLinks(
   const proc = opts.process ?? (globalThis.process as unknown as ProcessLike);
   const prefix = `${scheme}://`;
 
-  const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock) {
-    app.quit();
+  const releaseLock = acquireSingleInstanceLock(
+    (argv) => {
+      const url = argv.find((arg) => arg.startsWith(prefix));
+      if (url) {
+        onUrl(url);
+      }
+      opts.onSecondInstance?.();
+    },
+    { app },
+  );
+  if (!releaseLock) {
     return () => {};
   }
 
@@ -143,16 +208,8 @@ export function wireDeepLinks(
       onUrl(url);
     }
   };
-  const secondInstanceListener = (_event: unknown, argv: string[]): void => {
-    const url = argv.find((arg) => arg.startsWith(prefix));
-    if (url) {
-      onUrl(url);
-    }
-    opts.onSecondInstance?.();
-  };
 
   app.on('open-url', openUrlListener);
-  app.on('second-instance', secondInstanceListener);
 
   // Cold start on Windows/Linux: the launching URL is in our own argv.
   const initialUrl = proc.argv.find((arg) => arg.startsWith(prefix));
@@ -162,6 +219,6 @@ export function wireDeepLinks(
 
   return () => {
     app.removeListener('open-url', openUrlListener as (...args: unknown[]) => void);
-    app.removeListener('second-instance', secondInstanceListener as (...args: unknown[]) => void);
+    releaseLock();
   };
 }

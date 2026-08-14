@@ -449,6 +449,81 @@ describe('createAuthKit — wiring', () => {
     expect(app.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1);
   });
 
+  // Regression: schemeFromRedirectUri happily returns "https", which used to
+  // flow into setAsDefaultProtocolClient('https') — a request to become the
+  // user's default browser, and a callback that never arrives.
+  it('registerProtocol throws for an https redirectUri in system-browser mode', () => {
+    const app = makeApp();
+    const kit = createAuthKit(
+      { clientId: 'client_test', redirectUri: 'https://auth.example.com/callback' },
+      {
+        storage: makeStorage(),
+        client: { userManagement: {} } as unknown as WorkOS,
+        ipcMain: makeIpcMain(),
+        app,
+        process: { argv: ['electron'], execPath: '/e' },
+      },
+    );
+
+    expect(() => kit.registerProtocol()).toThrow(/workos-auth:\/\/callback|mode: 'window'/);
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+  });
+
+  it('registerProtocol claims no protocol for an https redirectUri in window mode', () => {
+    const app = makeApp();
+    const kit = createAuthKit(
+      {
+        clientId: 'client_test',
+        redirectUri: 'https://auth.example.com/callback',
+        ceremony: { mode: 'window' },
+      },
+      {
+        storage: makeStorage(),
+        client: { userManagement: {} } as unknown as WorkOS,
+        ipcMain: makeIpcMain(),
+        app,
+        process: { argv: ['electron'], execPath: '/e' },
+      },
+    );
+
+    // The window ceremony intercepts the redirect in-window, so there is no
+    // protocol to claim and no deep-link listener to wire...
+    expect(() => kit.registerProtocol()).not.toThrow();
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+    expect(app.listeners['open-url']).toBeUndefined();
+    // ...but the single-instance lock is not a deep-link concern, and callers
+    // rely on registerProtocol() for it, so it is still acquired and still
+    // released by cleanup().
+    expect(typeof app.listeners['second-instance']).toBe('function');
+    expect(() => kit.cleanup()).not.toThrow();
+  });
+
+  // The decision keys off the ceremony instance, not config.ceremony.mode, so an
+  // injected self-capturing ceremony is not told its redirect URI is broken.
+  it('registerProtocol respects an injected self-capturing ceremony', () => {
+    const app = makeApp();
+    const selfCapturing: Ceremony = {
+      capturesCallback: true,
+      open: vi.fn(async () => {}),
+      endSession: vi.fn(async () => {}),
+      onCallback: () => () => {},
+    };
+    const kit = createAuthKit(
+      { clientId: 'client_test', redirectUri: 'https://auth.example.com/callback' },
+      {
+        storage: makeStorage(),
+        client: { userManagement: {} } as unknown as WorkOS,
+        ipcMain: makeIpcMain(),
+        ceremony: selfCapturing,
+        app,
+        process: { argv: ['electron'], execPath: '/e' },
+      },
+    );
+
+    expect(() => kit.registerProtocol()).not.toThrow();
+    expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+  });
+
   it('cleanup removes handlers without throwing', () => {
     const kit = createAuthKit(config, {
       storage: makeStorage(),

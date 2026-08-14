@@ -23,6 +23,19 @@ import {
 } from './window.js';
 
 export interface Ceremony {
+  /**
+   * Does this ceremony capture its own callback URL (delivering it through
+   * {@link Ceremony.onCallback}) rather than relying on the OS deep-link
+   * handler? True for window mode, false for the system browser.
+   *
+   * `createAuthKit` reads this to decide what a redirect URI the OS will never
+   * hand back — an `http(s)` one — means: irrelevant for a self-capturing
+   * ceremony, a fatal misconfiguration for one that depends on the deep link.
+   * Keying off the ceremony instance (rather than `config.ceremony.mode`) means
+   * an injected self-capturing ceremony behaves correctly too. Treated as false
+   * when omitted.
+   */
+  capturesCallback?: boolean;
   /** Take the user to the authorization URL to begin authentication. */
   open(url: string): Promise<void>;
   /**
