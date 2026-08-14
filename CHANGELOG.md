@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/workos/authkit-electron/compare/v0.1.0...v0.1.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* refuse to claim http(s) as a deep-link protocol ([#11](https://github.com/workos/authkit-electron/issues/11)) ([e73bde0](https://github.com/workos/authkit-electron/commit/e73bde05f479c6bc526ba6c10339a20dd73797ce))
+
 ## 0.1.0 (2026-08-11)
 
 
