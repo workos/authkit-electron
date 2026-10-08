@@ -17,15 +17,19 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      # GITHUB_TOKEN (the workos/cli pattern) instead of the workos-sdk-automation
-      # app token: the app isn't installed on this repo. CI runs on the release PR
-      # are created in an "action_required" state — click "Approve and run" on the
-      # release PR before merging. Revert to the app token for zero-click CI once
-      # the app installation covers this repo.
+      - name: Generate token
+        id: generate-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.SDK_BOT_APP_ID }}
+          private-key: ${{ secrets.SDK_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: release
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.generate-token.outputs.token }}
 
   publish:
     needs: release-please
