@@ -53,7 +53,7 @@
     "attw": "attw"
   },
   "dependencies": {
-    "@workos/authkit-session": "^0.6.0",
+    "@workos/authkit-session": "^0.9.1",
     "electron-store": "^11.0.0"
   },
   "devDependencies": {

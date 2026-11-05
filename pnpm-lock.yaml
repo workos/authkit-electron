@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@workos/authkit-session':
-        specifier: ^0.6.0
-        version: 0.6.0(@workos-inc/node@10.5.0)(typescript@5.9.3)
+        specifier: ^0.9.1
+        version: 0.9.1(@workos-inc/node@10.5.0)(typescript@5.9.3)
       electron-store:
         specifier: ^11.0.0
         version: 11.0.2
@@ -2109,11 +2109,11 @@ packages:
     resolution: {integrity: sha512-kTtDOXUDM56f0JReKDlIrTQZu4RbiR8ExwLbJE5QquvhduT/NHccbDZthILd4izT28jwtGVe0bX597w7+NMwqg==}
     engines: {node: '>=22.11.0'}
 
-  '@workos/authkit-session@0.6.0':
-    resolution: {integrity: sha512-AaDt34h4XF5BTF5ShN+W+8OOHxj+n0KmkX+e89OVNaeZJKwqao0b/S3m3BiAylNHdZGM95tsvRUKeoEXp5qERQ==}
+  '@workos/authkit-session@0.9.1':
+    resolution: {integrity: sha512-kBAUC2/3aMDnPVmJjIG/DR5StG+U8NHNFp16KvJH+o7leS8fPFD4e7uINtuacYUk0N92EUrKf+po++rv0iu9Sg==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
-      '@workos-inc/node': ^8.0.0 || ^9.0.0 || ^10.0.0
+      '@workos-inc/node': ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0 || ^12.0.0
 
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
@@ -5665,7 +5665,7 @@ snapshots:
 
   '@workos-inc/node@10.5.0': {}
 
-  '@workos/authkit-session@0.6.0(@workos-inc/node@10.5.0)(typescript@5.9.3)':
+  '@workos/authkit-session@0.9.1(@workos-inc/node@10.5.0)(typescript@5.9.3)':
     dependencies:
       '@workos-inc/node': 10.5.0
       iron-webcrypto: 2.0.0
