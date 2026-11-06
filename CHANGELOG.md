@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/workos/authkit-electron/compare/v0.1.2...v0.1.3) (2026-11-06)
+
+
+### Bug Fixes
+
+* **deps:** Bump @workos/authkit-session to ^0.9.1 ([#22](https://github.com/workos/authkit-electron/issues/22)) ([dfa53d7](https://github.com/workos/authkit-electron/commit/dfa53d7d26a58342ef25e17265fcfb24a6c26621))
+* trigger release PR checks with SDK App token ([#18](https://github.com/workos/authkit-electron/issues/18)) ([84cf42d](https://github.com/workos/authkit-electron/commit/84cf42d57647c5991ad9373b82d993c56a6d5ed4))
+
 ## [0.1.2](https://github.com/workos/authkit-electron/compare/v0.1.1...v0.1.2) (2026-08-14)
 
 
