@@ -162,6 +162,57 @@ beforeEach(() => {
 });
 
 describe('getUser', () => {
+  it.each([true, false])(
+    'discards a pending result after sign-out (refreshed=%s)',
+    async (refreshed) => {
+      let resolve!: (result: unknown) => void;
+      const { core } = makeCore({
+        validateAndRefresh: vi.fn(
+          () =>
+            new Promise((done) => {
+              resolve = done;
+            }),
+        ),
+      });
+      const { operations } = makeOperations({});
+      const storage = makeStorage(session);
+      const manager = createSessionManager(baseDeps(core, operations, storage));
+
+      const pending = manager.getUser();
+      await manager.signOut();
+      resolve({ refreshed, session, claims: claims() });
+
+      expect(await pending).toEqual({ user: null });
+      expect(storage.getSession()).toBeNull();
+      expect(storage.setSession).not.toHaveBeenCalled();
+      expect(await manager.getAccessToken()).toBeNull();
+    },
+  );
+
+  it('does not clear a new session when an old validation fails after sign-out', async () => {
+    let reject!: (reason: unknown) => void;
+    const { core } = makeCore({
+      validateAndRefresh: vi.fn(
+        () =>
+          new Promise((_resolve, fail) => {
+            reject = fail;
+          }),
+      ),
+    });
+    const { operations } = makeOperations({});
+    const storage = makeStorage(session);
+    const manager = createSessionManager(baseDeps(core, operations, storage));
+
+    const pending = manager.getUser();
+    await manager.signOut();
+    const nextSession = { ...session, accessToken: 'new_access' };
+    storage.setSession(nextSession);
+    reject(new TokenValidationError('expired'));
+
+    expect(await pending).toEqual({ user: null });
+    expect(storage.getSession()).toEqual(nextSession);
+  });
+
   it('returns { user: null } when there is no stored session', async () => {
     const { core } = makeCore({});
     const { operations } = makeOperations({});

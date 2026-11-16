@@ -102,7 +102,11 @@ function toAuthResult<TCustomClaims = CustomClaims>(
 export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   const { core, operations, storage, client, clientId, ceremony } = deps;
 
+  // Sign-out invalidates all validation/refresh work already in flight.
+  let sessionGeneration = 0;
+
   async function getUser(): Promise<AuthResult> {
+    const generation = sessionGeneration;
     const session = storage.getSession();
     if (!session) {
       return { user: null };
@@ -110,12 +114,18 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
     try {
       const result = await core.validateAndRefresh(session);
+      if (generation !== sessionGeneration) {
+        return { user: null };
+      }
       // Re-persist only when the core actually minted new tokens.
       if (result.refreshed) {
         storage.setSession(result.session);
       }
       return toAuthResult(result.session, result.claims);
     } catch (err) {
+      if (generation !== sessionGeneration) {
+        return { user: null };
+      }
       // Only a definitively-invalid token (bad signature/claims, surfaced as
       // TokenValidationError) means the stored session can never work again —
       // clear it so the user re-authenticates. A transient failure (e.g. a
@@ -154,6 +164,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         logoutUrl = '';
       }
     }
+    sessionGeneration++;
     storage.clearSession();
 
     // End the hosted AuthKit session wherever its cookie lives (OS browser or
