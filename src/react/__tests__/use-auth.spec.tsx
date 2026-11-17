@@ -133,6 +133,51 @@ describe('AuthKitProvider + useAuth', () => {
     expect(bridge.getUser).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['success', 'error', 'rejection'] as const)(
+    'preserves auth pushes when the initial getUser settles with %s',
+    async (outcome) => {
+      let resolve!: (result: IpcResult<RendererAuthPayload>) => void;
+      let reject!: (error: Error) => void;
+      const pending = new Promise<IpcResult<RendererAuthPayload>>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      const { bridge, emit } = makeBridge({ ok: true, data: signedInPayload() });
+      vi.mocked(bridge.getUser).mockReturnValueOnce(pending);
+      installBridge(bridge);
+
+      render(
+        <AuthKitProvider>
+          <AuthProbe />
+        </AuthKitProvider>,
+      );
+
+      const latest = signedInPayload({ organizationId: 'org_2', role: 'member' });
+      act(() => emit(latest));
+      expect(screen.getByTestId('org').textContent).toBe('org_2');
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+
+      await act(async () => {
+        if (outcome === 'rejection') {
+          reject(new Error('initial IPC failed'));
+        } else if (outcome === 'error') {
+          resolve({ ok: false, error: { code: 'Boom', message: 'nope' } });
+        } else {
+          resolve({ ok: true, data: signedInPayload() });
+        }
+        await pending.catch(() => {});
+      });
+
+      expect(screen.getByTestId('org').textContent).toBe('org_2');
+      expect(screen.getByTestId('role').textContent).toBe('member');
+      expect(screen.getByTestId('user').textContent).toBe('ada@example.com');
+      // Invalidating the initial fetch must not disable subsequent pushes.
+      act(() => emit(signedInPayload({ organizationId: 'org_3', role: 'viewer' })));
+      expect(screen.getByTestId('org').textContent).toBe('org_3');
+      expect(screen.getByTestId('role').textContent).toBe('viewer');
+    },
+  );
+
   it('resolves to signed-out when getUser returns { user: null }', async () => {
     const { bridge } = makeBridge({ ok: true, data: { user: null } });
     installBridge(bridge);

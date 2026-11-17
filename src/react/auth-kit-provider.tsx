@@ -64,6 +64,7 @@ export function AuthKitProvider({ children }: AuthKitProviderProps): ReactNode {
 
     // 2. Subscribe to pushes from any window. Returns an unsubscribe.
     const unsubscribeChange = bridge.onAuthChange((payload) => {
+      active = false;
       setState({ auth: payload, isLoading: false });
       // A successful auth change clears any stale sign-in error.
       if (payload.user !== null) {
